@@ -7,6 +7,10 @@ import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'dart:convert';
+<<<<<<< HEAD
+=======
+import 'dart:typed_data';
+>>>>>>> 4b52f03969596bfe00ee9f56c89dfcd70c584883
 
 // 🔧 ONE-TIME FIREBASE UPDATE FUNCTION
 // Call this once to add device_id_hash to all existing students
