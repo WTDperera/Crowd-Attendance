@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 📱 BLE Attendance System
 
 A Flutter-based Bluetooth Low Energy (BLE) attendance tracking system with two apps: **Student App** (broadcasts) and **Lecturer App** (scans).
@@ -323,3 +324,21 @@ This project is for educational purposes.
 
 **Last Updated:** January 21, 2026  
 **Status:** Development - Hash implementation completed, testing in progress
+=======
+# lecture
+
+A new Flutter project.
+
+## Getting Started
+
+This project is a starting point for a Flutter application.
+
+A few resources to get you started if this is your first Flutter project:
+
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.
+>>>>>>> d9a000111db9c574c1c4915048a56b78fc3eebec
