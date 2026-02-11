@@ -185,19 +185,37 @@ class _ScannerScreenState extends State<ScannerScreen> {
         }
       }
       
-      // Extract registration number from device name
-      // Expected format: "EG2023001" or "eg2023001"
-      String regNo = deviceName.toLowerCase().replaceAll('/', '');
-      
-      print("🎓 Processing Student:");
-      print("   RegNo extracted: $regNo");
-      
-      // Validate RegNo format (starts with 'eg')
-      if (!regNo.startsWith('eg')) {
-        print("⚠️  Invalid RegNo format - not a student device");
+      // Extract registration number from manufacturer data (secure method)
+      final Map<int, List<int>> manufacturerDataMap =
+          result.advertisementData.manufacturerData;
+
+      print("🔒 Checking manufacturer data...");
+      print("   Available Company IDs: ${manufacturerDataMap.keys.toList()}");
+
+      if (!manufacturerDataMap.containsKey(0xFFFF)) {
+        print("⚠️  Device missing manufacturer data with Company ID 0xFFFF - SKIPPED");
         print("========================================");
         return;
       }
+
+      final List<int> regNoBytesList = manufacturerDataMap[0xFFFF]!;
+
+      print("📦 Manufacturer Data Found:");
+      print("   Company ID: 0xFFFF (Unreserved)");
+      print("   Data Length: ${regNoBytesList.length} bytes");
+      print("   Raw Bytes: $regNoBytesList");
+
+      String regNo;
+      try {
+        regNo = String.fromCharCodes(regNoBytesList);
+      } catch (e) {
+        print("❌ Failed to decode manufacturer data: $e");
+        print("========================================");
+        return;
+      }
+
+      print("🎓 Processing Student:");
+      print("   RegNo extracted: $regNo");
 
       // Check if already marked
       if (_detectedStudents.containsKey(regNo)) {
@@ -215,7 +233,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
           .get();
 
       if (studentQuery.docs.isEmpty) {
-        print("❌ Student not found in database");
+        print("❌ Student not found in database for reg_no: $regNo");
         print("========================================");
         return;
       }

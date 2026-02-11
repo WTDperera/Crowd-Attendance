@@ -831,6 +831,35 @@ class _ScannerScreenState extends State<ScannerScreen> {
     final hasPermissions = await _requestPermissions();
     if (!hasPermissions) return;
 
+    final isSupported = await FlutterBluePlus.isSupported;
+    if (!isSupported) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bluetooth not supported on this device'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
+      try {
+        await FlutterBluePlus.turnOn();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please turn on Bluetooth to start scanning'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
     setState(() => _isScanning = true);
 
     print("========================================");
@@ -910,7 +939,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     
     String regNo;
     try {
-      regNo = utf8.decode(regNoBytesList).toLowerCase();
+      regNo = utf8.decode(regNoBytesList).trim();
       print("✅ Decoded RegNo: $regNo");
     } catch (e) {
       print("❌ Failed to decode manufacturer data: $e");
@@ -929,7 +958,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
 
     // Validate RegNo format
-    if (!regNo.startsWith('eg') || regNo.length < 5) {
+    final regNoLower = regNo.toLowerCase();
+    if (!regNoLower.startsWith('eg') || regNo.length < 5) {
       print("❌ Invalid RegNo format - SKIPPED");
       print("========================================\n");
       return;

@@ -108,7 +108,7 @@ class StudentApp extends StatelessWidget {
         snackBarTheme: SnackBarThemeData(
           backgroundColor: const Color(0xFF1D1E33),
           contentTextStyle: const TextStyle(color: Colors.white),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -574,24 +574,20 @@ class _BroadcastScreenState extends State<BroadcastScreen>
         print("========================================");
 
         // Configure BLE advertising with manufacturer data
-        // BLE Manufacturer Data Format: [LSB, MSB, ...data]
-        // Company ID 0xFFFF = [0xFF, 0xFF] in little-endian
         final regNoBytes = utf8.encode(_regNo!);
-        final manufacturerBytes = Uint8List.fromList([
-          0xFF, 0xFF, // Company ID 0xFFFF (little-endian)
-          ...regNoBytes, // Registration number as UTF-8 bytes
-        ]);
+        final manufacturerData = Uint8List.fromList(regNoBytes);
         
         print("🔒 Encoding RegNo as manufacturer data:");
         print("   Original: $_regNo");
         print("   Company ID: 0xFFFF (Unreserved)");
         print("   Data Bytes: ${regNoBytes.length} bytes");
-        print("   Full Packet: ${manufacturerBytes.length} bytes = [0xFF, 0xFF, ...data]");
+        print("   Full Packet: ${manufacturerData.length} bytes (manufacturerId provided separately)");
         
         final advertiseData = AdvertiseData(
           serviceUuid: SERVICE_UUID,
           localName: "SJP", // Short name to save packet space
-          manufacturerData: manufacturerBytes,
+          manufacturerId: 0xFFFF,
+          manufacturerData: manufacturerData,
         );
 
         final advertiseSettings = AdvertiseSettings(
