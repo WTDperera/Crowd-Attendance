@@ -27,11 +27,14 @@ migrate_working_dir/
 **/doc/api/
 **/ios/Flutter/.last_build_id
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
 /build/
 /coverage/
+**/build/
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +46,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase (keep google-services.json but ignore firebase config)
+firebase.json
+.firebaserc
+
+# Environment variables & secrets
+*.env
+.env.*
+**/.env
+secrets/
+
+# APK files
+*.apk
+*.aab
