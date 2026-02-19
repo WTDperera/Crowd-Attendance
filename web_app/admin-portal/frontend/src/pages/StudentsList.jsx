@@ -1,17 +1,47 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useStudents } from '../context/StudentsContext.jsx'
+import { collection, getDocs } from 'firebase/firestore'
+import { db } from '../firebase/firebase'
 
 const STATUS_OPTIONS = ['All', 'Active', 'Locked', 'Device Not Set']
 const LOGIN_OPTIONS = ['All', 'Logged In', 'Never Logged In']
 const PAGE_SIZE = 10
 
 function StudentsList() {
-  const { students, removeStudent } = useStudents()
+  const [students, setStudents] = useState([])
+  const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
   const [loginFilter, setLoginFilter] = useState('All')
   const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchStudents = async () => {
+      try {
+        const snapshot = await getDocs(collection(db, 'students'))
+        const rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        if (isMounted) {
+          setStudents(rows)
+        }
+      } catch (error) {
+        if (isMounted) {
+          setStudents([])
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    fetchStudents()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -47,14 +77,7 @@ function StudentsList() {
   }, [filteredStudents, page])
 
   const handleDelete = (id) => {
-    removeStudent(id)
-  }
-
-  const formatDate = (value) => {
-    if (!value) {
-      return '—'
-    }
-    return new Date(value).toLocaleString()
+    console.log('Delete student:', id)
   }
 
   const resolveStatus = (student) => {
@@ -123,24 +146,25 @@ function StudentsList() {
             <tr>
               <th>Reg No</th>
               <th>Email</th>
-              <th>Device ID</th>
-              <th>Last Login</th>
-              <th>Device Locked At</th>
               <th>Status</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {pagedStudents.map((student) => {
+            {isLoading && (
+              <tr>
+                <td colSpan="4" className="empty-cell">
+                  Loading...
+                </td>
+              </tr>
+            )}
+            {!isLoading && pagedStudents.map((student) => {
               const status = resolveStatus(student)
 
               return (
                 <tr key={student.id}>
                   <td>{student.reg_no}</td>
                   <td>{student.email}</td>
-                  <td>{student.device_id || '—'}</td>
-                  <td>{formatDate(student.last_login)}</td>
-                  <td>{formatDate(student.device_locked_at)}</td>
                   <td>
                     <span
                       className={`status-pill ${
@@ -174,10 +198,12 @@ function StudentsList() {
                 </tr>
               )
             })}
-            {pagedStudents.length === 0 && (
+            {!isLoading && pagedStudents.length === 0 && (
               <tr>
-                <td colSpan="7" className="empty-cell">
-                  No students match your filters.
+                <td colSpan="4" className="empty-cell">
+                  {students.length === 0
+                    ? 'No students found.'
+                    : 'No students match your filters.'}
                 </td>
               </tr>
             )}

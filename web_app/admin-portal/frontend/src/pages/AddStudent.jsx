@@ -1,18 +1,19 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useStudents } from '../context/StudentsContext.jsx'
+import { addStudent as addStudentRequest } from '../services/studentService'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function AddStudent() {
-  const navigate = useNavigate()
-  const { addStudent } = useStudents()
+  const { addStudent: addStudentLocal } = useStudents()
   const [formData, setFormData] = useState({
     reg_no: '',
     email: '',
     password: '',
   })
   const [errors, setErrors] = useState({})
+  const [formError, setFormError] = useState('')
+  const [formSuccess, setFormSuccess] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
   const handleChange = (event) => {
@@ -49,27 +50,34 @@ function AddStudent() {
     return formData.reg_no && formData.email && formData.password
   }, [formData])
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const nextErrors = validate()
     setErrors(nextErrors)
+    setFormError('')
+    setFormSuccess('')
 
     if (Object.keys(nextErrors).length > 0) {
       return
     }
 
-    const newStudent = {
-      id: `stu_${Date.now()}`,
-      reg_no: formData.reg_no,
-      email: formData.email,
-      device_id: null,
-      device_locked_at: null,
-      last_login: null,
-    }
+    try {
+      const response = await addStudentRequest(formData)
+      const student = response.student || {
+        id: response.uid,
+        reg_no: formData.reg_no,
+        email: formData.email,
+        device_id: null,
+        device_locked_at: null,
+        last_login: null,
+      }
 
-    console.log('New student credentials:', formData)
-    addStudent(newStudent)
-    navigate('/students')
+      addStudentLocal(student)
+      setFormSuccess('Student account created successfully.')
+      setFormData({ reg_no: '', email: '', password: '' })
+    } catch (error) {
+      setFormError(error.message)
+    }
   }
 
   return (
@@ -137,6 +145,9 @@ function AddStudent() {
         <p className="helper-text">
           Share the credentials securely. Students cannot self-register.
         </p>
+
+        {formError && <span className="field-error">{formError}</span>}
+        {formSuccess && <span className="helper-text">{formSuccess}</span>}
 
         <button className="primary-button" type="submit" disabled={!canSubmit}>
           Create Student

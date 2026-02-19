@@ -33,8 +33,8 @@ function DashboardLayout() {
         : 'Edit Student'
       : 'Modules')
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await logout()
     navigate('/login')
   }
 

@@ -1,19 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { signInWithEmailAndPassword } from 'firebase/auth'
 import AuthLayout from '../components/AuthLayout.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { auth } from '../firebase/firebase'
+
+
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function LoginPage() {
   const navigate = useNavigate()
-  const { isAuthed, login } = useAuth()
+  const { user, authLoading } = useAuth()
   const [formData, setFormData] = useState({
     email: '',
     password: '',
     remember: false,
   })
   const [errors, setErrors] = useState({})
+  const [formError, setFormError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
 
   const handleChange = (event) => {
@@ -46,25 +51,39 @@ function LoginPage() {
     return formData.email && formData.password
   }, [formData.email, formData.password])
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const nextErrors = validate()
     setErrors(nextErrors)
+    setFormError('')
 
     if (Object.keys(nextErrors).length > 0) {
       return
     }
 
-    login()
-    console.log('Admin login:', formData)
-    navigate('/dashboard')
+    try {
+      await signInWithEmailAndPassword(auth, formData.email, formData.password)
+      navigate('/dashboard')
+    } catch (error) {
+      const errorCode = error?.code
+      const friendlyMessageMap = {
+        'auth/user-not-found': 'No account found for this email.',
+        'auth/wrong-password': 'Incorrect password.',
+        'auth/invalid-email': 'Invalid email address.',
+        'auth/too-many-requests': 'Too many attempts. Try again later.',
+      }
+      setFormError(
+        friendlyMessageMap[errorCode] ||
+          'Unable to sign in right now. Please try again.'
+      )
+    }
   }
 
   useEffect(() => {
-    if (isAuthed) {
+    if (!authLoading && user) {
       navigate('/dashboard')
     }
-  }, [isAuthed, navigate])
+  }, [authLoading, user, navigate])
 
   return (
     <AuthLayout>
@@ -126,6 +145,7 @@ function LoginPage() {
           </Link>
         </div>
 
+        {formError && <span className="field-error">{formError}</span>}
         <button className="primary-button" type="submit" disabled={!canSubmit}>
           Sign in
         </button>

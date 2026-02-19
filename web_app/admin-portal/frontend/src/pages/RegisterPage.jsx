@@ -1,20 +1,25 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth'
 import AuthLayout from '../components/AuthLayout.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+import { auth } from '../firebase/firebase'
+import { createLecturerProfile } from '../firebase/lecturerService'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function RegisterPage() {
   const navigate = useNavigate()
-  const { isAuthed, login } = useAuth()
+  const { isAuthed } = useAuth()
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     password: '',
     confirmPassword: '',
+    department: '',
   })
   const [errors, setErrors] = useState({})
+  const [formError, setFormError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
@@ -63,18 +68,34 @@ function RegisterPage() {
     )
   }, [formData])
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const nextErrors = validate()
     setErrors(nextErrors)
+    setFormError('')
 
     if (Object.keys(nextErrors).length > 0) {
       return
     }
 
-    login()
-    console.log('Admin register:', formData)
-    navigate('/dashboard')
+    try {
+      const { fullName, email, password, department } = formData
+      const cred = await createUserWithEmailAndPassword(auth, email, password)
+      await updateProfile(cred.user, { displayName: fullName })
+      await createLecturerProfile(cred.user.uid, { fullName, email, department })
+      navigate('/dashboard')
+    } catch (error) {
+      const errorCode = error?.code
+      const friendlyMessageMap = {
+        'auth/email-already-in-use': 'This email is already registered.',
+        'auth/weak-password': 'Password must be at least 6 characters.',
+        'auth/invalid-email': 'Please enter a valid email address.',
+      }
+      setFormError(
+        friendlyMessageMap[errorCode] ||
+          'Unable to create your account right now. Please try again.'
+      )
+    }
   }
 
   useEffect(() => {
@@ -167,6 +188,7 @@ function RegisterPage() {
           )}
         </div>
 
+        {formError && <span className="field-error">{formError}</span>}
         <button className="primary-button" type="submit" disabled={!canSubmit}>
           Create account
         </button>
