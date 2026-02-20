@@ -9,6 +9,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io' show Platform;
 import 'dart:convert' show utf8;
 
+import 'services/session_service.dart';
+
 // ============================================================================
 // MAIN ENTRY POINT
 // ============================================================================
@@ -16,14 +18,14 @@ import 'dart:convert' show utf8;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  
+
   runApp(const LecturerApp());
 }
 
@@ -140,11 +142,11 @@ class AuthWrapper extends StatelessWidget {
             ),
           );
         }
-        
+
         if (snapshot.hasData && snapshot.data != null) {
           return DashboardScreen(user: snapshot.data!);
         }
-        
+
         return const LoginScreen();
       },
     );
@@ -192,16 +194,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Step 1: Authenticate
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
 
       final uid = userCredential.user!.uid;
       final currentDeviceId = await _getDeviceId();
 
       // Step 2: Check device binding
-      final lecturerRef = FirebaseFirestore.instance.collection('lecturers').doc(uid);
+      final lecturerRef = FirebaseFirestore.instance
+          .collection('lecturers')
+          .doc(uid);
       final lecturerDoc = await lecturerRef.get();
 
       if (!lecturerDoc.exists) {
@@ -210,16 +215,16 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final data = lecturerDoc.data()!;
-      final storedDeviceId = data['device_id'];
+      final storedDeviceId = data['device_id']?.toString().trim();
 
       // Step 3: Device binding logic
       if (storedDeviceId == null || storedDeviceId.isEmpty) {
         // First login - bind device
-        await lecturerRef.update({
+        await lecturerRef.set({
           'device_id': currentDeviceId,
           'device_locked_at': FieldValue.serverTimestamp(),
-        });
-        
+        }, SetOptions(merge: true));
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -228,19 +233,16 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
         }
-      } else if (storedDeviceId != currentDeviceId) {
+      } else if (storedDeviceId != currentDeviceId.trim()) {
         // Device mismatch - BLOCK
         await FirebaseAuth.instance.signOut();
         throw Exception(
-          'Unauthorized Device\n\nThis account is locked to another device.'
+          'Unauthorized Device\n\nThis account is locked to another device.',
         );
       }
 
       // Update last login
-      await lecturerRef.update({
-        'last_login': FieldValue.serverTimestamp(),
-      });
-
+      await lecturerRef.update({'last_login': FieldValue.serverTimestamp()});
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
       switch (e.code) {
@@ -259,7 +261,7 @@ class _LoginScreenState extends State<LoginScreen> {
         default:
           message = 'Authentication error: ${e.message}';
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -316,15 +318,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   Text(
                     'Lecturer Login',
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
                   const SizedBox(height: 8),
-                  
+
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1D1E33),
                       borderRadius: BorderRadius.circular(8),
@@ -346,7 +351,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 48),
-                  
+
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -354,7 +359,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Email Address',
-                      prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF00BCD4)),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Color(0xFF00BCD4),
+                      ),
                       hintText: 'lecturer@sjp.ac.lk',
                     ),
                     validator: (value) {
@@ -368,7 +376,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  
+
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -376,10 +384,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF00BCD4)),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: Color(0xFF00BCD4),
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                           color: Colors.white54,
                         ),
                         onPressed: () {
@@ -396,7 +409,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onFieldSubmitted: (_) => _handleLogin(),
                   ),
                   const SizedBox(height: 40),
-                  
+
                   SizedBox(
                     width: double.infinity,
                     height: 56,
@@ -408,14 +421,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
+                                ),
                               ),
                             )
                           : const Text('LOGIN'),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -436,9 +451,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Expanded(
                           child: Text(
                             'Accounts are admin-created only.\nContact your institution for credentials.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 12,
-                            ),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                           ),
                         ),
                       ],
@@ -467,7 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
 class DashboardScreen extends StatefulWidget {
   final User user;
-  
+
   const DashboardScreen({Key? key, required this.user}) : super(key: key);
 
   @override
@@ -489,10 +504,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .collection('lecturers')
           .doc(widget.user.uid)
           .get();
-      
+
       if (doc.exists) {
         setState(() {
-          _lecturerName = doc.data()?['name'] ?? widget.user.email?.split('@')[0];
+          _lecturerName =
+              doc.data()?['name'] ?? widget.user.email?.split('@')[0];
         });
       }
     } catch (e) {
@@ -508,9 +524,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Create New Session'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -543,7 +557,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              if (moduleController.text.isNotEmpty && 
+              if (moduleController.text.isNotEmpty &&
                   topicController.text.isNotEmpty) {
                 Navigator.pop(context, true);
               }
@@ -556,16 +570,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (result == true && moduleController.text.isNotEmpty) {
       try {
+        final moduleCode = moduleController.text.trim().toUpperCase();
+        final sessionTopic = topicController.text.trim();
+
         // Create session in Firestore
         final sessionRef = await FirebaseFirestore.instance
             .collection('active_sessions')
             .add({
-          'lecturer_id': widget.user.uid,
-          'module': moduleController.text.trim(),
-          'topic': topicController.text.trim(),
-          'created_at': FieldValue.serverTimestamp(),
-          'status': 'active',
-        });
+              'lecturer_id': widget.user.uid,
+              // Keep existing fields
+              'module': moduleCode,
+              'topic': sessionTopic,
+              // Canonical fields used by services/modules
+              'module_id': moduleCode,
+              'module_code': moduleCode,
+              'session_topic': sessionTopic,
+              'created_at': FieldValue.serverTimestamp(),
+              'started_at': FieldValue.serverTimestamp(),
+              'status': 'active',
+            });
 
         if (mounted) {
           Navigator.push(
@@ -573,8 +596,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             MaterialPageRoute(
               builder: (context) => ScannerScreen(
                 sessionId: sessionRef.id,
-                module: moduleController.text.trim(),
-                topic: topicController.text.trim(),
+                module: moduleCode,
+                topic: sessionTopic,
               ),
             ),
           );
@@ -621,10 +644,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF00BCD4),
-                      const Color(0xFF00ACC1),
-                    ],
+                    colors: [const Color(0xFF00BCD4), const Color(0xFF00ACC1)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -635,10 +655,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     const Text(
                       'Welcome back,',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -653,7 +670,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Create Session Button
               SizedBox(
                 width: double.infinity,
@@ -692,7 +709,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Info Card
               Container(
                 padding: const EdgeInsets.all(20),
@@ -705,20 +722,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.info_outline, color: Color(0xFF00BCD4)),
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           'How it works',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontSize: 18,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(fontSize: 18),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildInfoRow('1', 'Create a new session with module code and topic'),
+                    _buildInfoRow(
+                      '1',
+                      'Create a new session with module code and topic',
+                    ),
                     _buildInfoRow('2', 'Scan for nearby students broadcasting'),
-                    _buildInfoRow('3', 'System auto-verifies students in database'),
+                    _buildInfoRow(
+                      '3',
+                      'System auto-verifies students in database',
+                    ),
                     _buildInfoRow('4', 'Attendance marked in real-time'),
                   ],
                 ),
@@ -754,10 +780,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),
@@ -773,7 +796,7 @@ class ScannerScreen extends StatefulWidget {
   final String sessionId;
   final String module;
   final String topic;
-  
+
   const ScannerScreen({
     Key? key,
     required this.sessionId,
@@ -789,7 +812,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   bool _isScanning = false;
   final Map<String, StudentAttendance> _detectedStudents = {};
   int _devicesFound = 0;
-  
+
   static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
 
   @override
@@ -812,7 +835,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Permission denied: ${permission.toString().split('.').last}'),
+                content: Text(
+                  'Permission denied: ${permission.toString().split('.').last}',
+                ),
                 backgroundColor: Colors.red,
               ),
             );
@@ -896,10 +921,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Future<void> _processScanResult(ScanResult result) async {
     _devicesFound++;
-    
+
     final deviceName = result.device.platformName;
     final deviceId = result.device.remoteId.toString();
-    
+
     print("\n========================================");
     print("📱 DEVICE DETECTED #$_devicesFound");
     print("========================================");
@@ -915,28 +940,31 @@ class _ScannerScreenState extends State<ScannerScreen> {
     // Extract registration number from manufacturer data (SECURE METHOD)
     // flutter_blue_plus returns Map<int, List<int>> where key is company ID
     final advertisementData = result.advertisementData;
-    final Map<int, List<int>> manufacturerDataMap = advertisementData.manufacturerData;
-    
+    final Map<int, List<int>> manufacturerDataMap =
+        advertisementData.manufacturerData;
+
     print("🔒 Checking manufacturer data...");
     print("   Available Company IDs: ${manufacturerDataMap.keys.toList()}");
-    
+
     if (!manufacturerDataMap.containsKey(0xFFFF)) {
-      print("⚠️  Device missing manufacturer data with Company ID 0xFFFF - SKIPPED");
+      print(
+        "⚠️  Device missing manufacturer data with Company ID 0xFFFF - SKIPPED",
+      );
       print("   This device is not broadcasting with secure method");
       print("========================================\n");
       return;
     }
-    
+
     // Get manufacturer data for company ID 0xFFFF
     // Note: flutter_blue_plus automatically parses the company ID from the packet
     // The data here is ONLY the payload bytes (company ID already stripped)
     final List<int> regNoBytesList = manufacturerDataMap[0xFFFF]!;
-    
+
     print("📦 Manufacturer Data Found:");
     print("   Company ID: 0xFFFF (Unreserved)");
     print("   Data Length: ${regNoBytesList.length} bytes");
     print("   Raw Bytes: $regNoBytesList");
-    
+
     String regNo;
     try {
       regNo = utf8.decode(regNoBytesList).trim();
@@ -946,7 +974,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       print("========================================\n");
       return;
     }
-    
+
     print("🎓 Processing Student:");
     print("   RegNo: $regNo");
 
@@ -968,7 +996,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     try {
       // Query Firestore to verify student
       print("🔍 Querying Firebase for student: $regNo");
-      
+
       final studentQuery = await FirebaseFirestore.instance
           .collection('students')
           .where('reg_no', isEqualTo: regNo)
@@ -978,7 +1006,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (studentQuery.docs.isEmpty) {
         print("❌ Student not found in database");
         print("========================================\n");
-        
+
         setState(() {
           _detectedStudents[regNo] = StudentAttendance(
             regNo: regNo,
@@ -993,26 +1021,20 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       final studentDoc = studentQuery.docs.first;
       final studentId = studentDoc.id;
-      
+
       print("✅ Student verified in Firebase:");
       print("   Name: ${studentDoc.data()['email']}");
       print("   Student ID: $studentId");
 
       // Mark attendance in Firestore
       print("💾 Marking attendance...");
-      
-      await FirebaseFirestore.instance
-          .collection('active_sessions')
-          .doc(widget.sessionId)
-          .collection('attendance')
-          .doc(regNo)
-          .set({
-        'student_id': studentId,
-        'reg_no': regNo,
-        'timestamp': FieldValue.serverTimestamp(),
-        'rssi': result.rssi,
-        'status': 'present',
-      });
+
+      await SessionService().markAttendance(
+        sessionId: widget.sessionId,
+        studentId: studentId,
+        regNo: regNo,
+        rssi: result.rssi,
+      );
 
       print("✅ Attendance marked successfully!");
       print("========================================\n");
@@ -1053,9 +1075,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('End Session?'),
         content: const Text('This will mark the session as completed.'),
         actions: [
@@ -1074,16 +1094,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     if (confirm == true) {
       _stopScanning();
-      
-      // Update session status
-      await FirebaseFirestore.instance
-          .collection('active_sessions')
-          .doc(widget.sessionId)
-          .update({
-        'status': 'completed',
-        'completed_at': FieldValue.serverTimestamp(),
-        'total_students': _detectedStudents.length,
-      });
+
+      // End session and update module counters atomically.
+      await SessionService().endSession(
+        widget.sessionId,
+        totalStudents: _detectedStudents.length,
+      );
 
       if (mounted) {
         Navigator.pop(context);
@@ -1108,10 +1124,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF00BCD4),
-                    const Color(0xFF00ACC1),
-                  ],
+                  colors: [const Color(0xFF00BCD4), const Color(0xFF00ACC1)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -1131,10 +1144,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   const SizedBox(height: 8),
                   Text(
                     widget.topic,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -1169,7 +1179,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 ],
               ),
             ),
-            
+
             // Student List
             Expanded(
               child: _detectedStudents.isEmpty
@@ -1189,9 +1199,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                             _isScanning
                                 ? 'Scanning for students...'
                                 : 'Scan stopped',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.white54,
-                            ),
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(color: Colors.white54),
                           ),
                         ],
                       ),
@@ -1200,22 +1209,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _detectedStudents.length,
                       itemBuilder: (context, index) {
-                        final student = _detectedStudents.values.elementAt(index);
+                        final student = _detectedStudents.values.elementAt(
+                          index,
+                        );
                         return _buildStudentCard(student);
                       },
                     ),
             ),
-            
+
             // Control Buttons
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
                 color: Color(0xFF1D1E33),
                 border: Border(
-                  top: BorderSide(
-                    color: Colors.white12,
-                    width: 1,
-                  ),
+                  top: BorderSide(color: Colors.white12, width: 1),
                 ),
               ),
               child: Row(
@@ -1262,9 +1270,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         color: const Color(0xFF1D1E33),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: student.isVerified
-              ? const Color(0xFF00BCD4)
-              : Colors.red,
+          color: student.isVerified ? const Color(0xFF00BCD4) : Colors.red,
           width: 2,
         ),
       ),
@@ -1309,10 +1315,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             ),
             child: Text(
               '${student.rssi} dBm',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),
         ],
