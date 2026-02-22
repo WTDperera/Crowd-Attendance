@@ -1,25 +1,66 @@
-import { useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { useStudents } from '../context/StudentsContext.jsx'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { getStudents, updateStudent } from '../services/studentService'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function EditStudent() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { students, updateStudent } = useStudents()
-
-  const student = useMemo(
-    () => students.find((item) => item.id === id),
-    [students, id]
-  )
-
+  const location = useLocation()
+  const [student, setStudent] = useState(location.state?.student || null)
   const [formData, setFormData] = useState({
-    email: student?.email || '',
-    password: '',
+    reg_no: location.state?.student?.reg_no || '',
+    email: location.state?.student?.email || '',
   })
   const [errors, setErrors] = useState({})
-  const [showPassword, setShowPassword] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [isLoading, setIsLoading] = useState(!location.state?.student)
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadStudent = async () => {
+      if (student) {
+        return
+      }
+
+      setIsLoading(true)
+      try {
+        const rows = await getStudents()
+        const matched = rows.find((item) => item.id === id) || null
+        if (isMounted) {
+          setStudent(matched)
+          setFormData({
+            reg_no: matched?.reg_no || '',
+            email: matched?.email || '',
+          })
+        }
+      } catch (error) {
+        if (isMounted) {
+          setFormError(error.message)
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false)
+        }
+      }
+    }
+
+    loadStudent()
+
+    return () => {
+      isMounted = false
+    }
+  }, [id, student])
+
+  if (isLoading) {
+    return (
+      <div className="card">
+        <h4>Loading student...</h4>
+      </div>
+    )
+  }
 
   if (!student) {
     return (
@@ -48,37 +89,44 @@ function EditStudent() {
   const validate = () => {
     const nextErrors = {}
 
+    if (!formData.reg_no.trim()) {
+      nextErrors.reg_no = 'Registration number is required.'
+    }
+
     if (!formData.email.trim()) {
       nextErrors.email = 'Email is required.'
     } else if (!emailPattern.test(formData.email)) {
       nextErrors.email = 'Enter a valid email address.'
     }
 
-    if (formData.password && formData.password.length < 8) {
-      nextErrors.password = 'Password must be at least 8 characters.'
-    }
-
     return nextErrors
   }
 
-  const canSubmit = useMemo(() => formData.email, [formData.email])
+  const canSubmit = useMemo(() => {
+    return formData.email && formData.reg_no
+  }, [formData.email, formData.reg_no])
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
     const nextErrors = validate()
     setErrors(nextErrors)
+    setFormError('')
 
     if (Object.keys(nextErrors).length > 0) {
       return
     }
 
-    updateStudent(student.id, { email: formData.email })
-    console.log('Updated student credentials:', {
-      id: student.id,
-      email: formData.email,
-      password: formData.password || '(unchanged)',
-    })
-    navigate('/students')
+    try {
+      await updateStudent(student.id, {
+        email: formData.email,
+        reg_no: formData.reg_no,
+      })
+      navigate('/students', {
+        state: { message: 'Student updated successfully.' },
+      })
+    } catch (error) {
+      setFormError(error.message)
+    }
   }
 
   return (
@@ -101,6 +149,20 @@ function EditStudent() {
 
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <div className="field-group">
+          <label htmlFor="editRegNo">Registration Number</label>
+          <input
+            id="editRegNo"
+            type="text"
+            name="reg_no"
+            value={formData.reg_no}
+            onChange={handleChange}
+          />
+          {errors.reg_no && (
+            <span className="field-error">{errors.reg_no}</span>
+          )}
+        </div>
+
+        <div className="field-group">
           <label htmlFor="editEmail">Student Email</label>
           <input
             id="editEmail"
@@ -112,29 +174,7 @@ function EditStudent() {
           {errors.email && <span className="field-error">{errors.email}</span>}
         </div>
 
-        <div className="field-group">
-          <label htmlFor="editPassword">New Password (optional)</label>
-          <div className="field-inline">
-            <input
-              id="editPassword"
-              type={showPassword ? 'text' : 'password'}
-              name="password"
-              placeholder="Set a new password"
-              value={formData.password}
-              onChange={handleChange}
-            />
-            <button
-              type="button"
-              className="ghost-button"
-              onClick={() => setShowPassword((prev) => !prev)}
-            >
-              {showPassword ? 'Hide' : 'Show'}
-            </button>
-          </div>
-          {errors.password && (
-            <span className="field-error">{errors.password}</span>
-          )}
-        </div>
+        {formError && <span className="field-error">{formError}</span>}
 
         <button className="primary-button" type="submit" disabled={!canSubmit}>
           Save Changes

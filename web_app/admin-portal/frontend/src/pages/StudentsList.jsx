@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { collection, getDocs } from 'firebase/firestore'
-import { db } from '../firebase/firebase'
+import { Link, useLocation } from 'react-router-dom'
+import { deleteStudent, getStudents } from '../services/studentService'
 
 const STATUS_OPTIONS = ['All', 'Active', 'Locked', 'Device Not Set']
 const LOGIN_OPTIONS = ['All', 'Logged In', 'Never Logged In']
@@ -14,20 +13,30 @@ function StudentsList() {
   const [statusFilter, setStatusFilter] = useState('All')
   const [loginFilter, setLoginFilter] = useState('All')
   const [page, setPage] = useState(1)
+  const [message, setMessage] = useState('')
+  const [errorMessage, setErrorMessage] = useState('')
+  const location = useLocation()
+
+  useEffect(() => {
+    if (location.state?.message) {
+      setMessage(location.state.message)
+    }
+  }, [location.state])
 
   useEffect(() => {
     let isMounted = true
 
     const fetchStudents = async () => {
       try {
-        const snapshot = await getDocs(collection(db, 'students'))
-        const rows = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }))
+        const rows = await getStudents()
         if (isMounted) {
           setStudents(rows)
+          setErrorMessage('')
         }
       } catch (error) {
         if (isMounted) {
           setStudents([])
+          setErrorMessage(error.message)
         }
       } finally {
         if (isMounted) {
@@ -76,8 +85,22 @@ function StudentsList() {
     return filteredStudents.slice(start, start + PAGE_SIZE)
   }, [filteredStudents, page])
 
-  const handleDelete = (id) => {
-    console.log('Delete student:', id)
+  const handleDelete = async (id) => {
+    const shouldDelete = window.confirm('Delete this student account?')
+    if (!shouldDelete) {
+      return
+    }
+
+    setMessage('')
+    setErrorMessage('')
+
+    try {
+      await deleteStudent(id)
+      setStudents((prev) => prev.filter((student) => student.id !== id))
+      setMessage('Student deleted successfully.')
+    } catch (error) {
+      setErrorMessage(error.message)
+    }
   }
 
   const resolveStatus = (student) => {
@@ -140,6 +163,9 @@ function StudentsList() {
         </select>
       </div>
 
+      {errorMessage && <span className="field-error">{errorMessage}</span>}
+      {message && <span className="helper-text">{message}</span>}
+
       <div className="table-wrap">
         <table>
           <thead>
@@ -183,6 +209,7 @@ function StudentsList() {
                       <Link
                         className="text-link"
                         to={`/students/${student.id}/edit`}
+                        state={{ student }}
                       >
                         Edit
                       </Link>

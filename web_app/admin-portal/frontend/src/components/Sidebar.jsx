@@ -11,8 +11,8 @@ function Sidebar({ isOpen, onNavigate, onLogout }) {
         <NavLink to="/dashboard" onClick={onNavigate}>
           Dashboard
         </NavLink>
-        <NavLink to="/modules/new" onClick={onNavigate}>
-          Add Module
+        <NavLink to="/modules" onClick={onNavigate}>
+          Modules
         </NavLink>
         <NavLink to="/students" onClick={onNavigate}>
           Students

@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext.jsx'
 import Sidebar from './Sidebar.jsx'
 
 const pageTitles = {
-  '/dashboard': 'Modules',
+  '/dashboard': 'Dashboard',
+  '/modules': 'Modules',
   '/modules/new': 'Add Module',
   '/students': 'Students',
   '/students/new': 'Add Student',
@@ -31,7 +32,7 @@ function DashboardLayout() {
       ? location.pathname.endsWith('/new')
         ? 'Add Student'
         : 'Edit Student'
-      : 'Modules')
+      : 'Dashboard')
 
   const handleLogout = async () => {
     await logout()

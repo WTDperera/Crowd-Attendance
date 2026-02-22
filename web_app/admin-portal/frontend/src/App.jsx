@@ -13,8 +13,9 @@ import EditStudent from './pages/EditStudent.jsx'
 import EditModule from './pages/EditModule.jsx'
 import EditSession from './pages/EditSession.jsx'
 import LoginPage from './pages/LoginPage.jsx'
-import ModuleDetails from './pages/ModuleDetails.jsx'
-import ModulesDashboard from './pages/ModulesDashboard.jsx'
+import ModuleDetailsPage from './pages/ModuleDetailsPage.jsx'
+import DashboardHome from './pages/DashboardHome.jsx'
+import ModulesPage from './pages/ModulesPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import StudentsList from './pages/StudentsList.jsx'
@@ -31,9 +32,10 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<ModulesDashboard />} />
+                <Route path="/dashboard" element={<DashboardHome />} />
+                <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/modules/new" element={<AddModule />} />
-                <Route path="/modules/:id" element={<ModuleDetails />} />
+                <Route path="/modules/:id" element={<ModuleDetailsPage />} />
                 <Route path="/modules/:id/edit" element={<EditModule />} />
                 <Route
                   path="/modules/:id/sessions/new"
