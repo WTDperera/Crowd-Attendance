@@ -11,6 +11,7 @@ import 'dart:convert' show utf8;
 import 'dart:typed_data' show Uint8List;
 
 import 'screens/my_modules_screen.dart';
+import 'screens/modules_screen.dart';
 
 // ============================================================================
 // MAIN ENTRY POINT
@@ -679,6 +680,17 @@ class _BroadcastScreenState extends State<BroadcastScreen>
         elevation: 0,
         title: const Text('Student Broadcaster'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.library_books),
+            tooltip: 'Modules',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ModulesScreen(studentUid: widget.user.uid),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.assessment),
             tooltip: 'My Modules',

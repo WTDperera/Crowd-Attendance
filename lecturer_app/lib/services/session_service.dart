@@ -34,6 +34,7 @@ class SessionService {
         'lecturer_id': user.uid,
         'module_id': resolvedModuleId,
         'module_code': moduleCode.toUpperCase(),
+        'module': moduleCode.toUpperCase(),
         'session_topic': sessionTopic,
         'created_at': FieldValue.serverTimestamp(),
         'started_at': FieldValue.serverTimestamp(),
@@ -219,7 +220,9 @@ class SessionService {
         });
       });
 
-      if (moduleKeyOut != null && moduleKeyOut!.isNotEmpty && endedAtOut != null) {
+      if (moduleKeyOut != null &&
+          moduleKeyOut!.isNotEmpty &&
+          endedAtOut != null) {
         await _finalizeAbsences(
           sessionId: sessionId,
           moduleId: moduleKeyOut!,
@@ -267,8 +270,9 @@ class SessionService {
     final regNosToResolve = <String>{};
 
     final sessionData = sessionSnap.data();
-    final studentsPresentRaw =
-        (sessionData is Map<String, dynamic>) ? sessionData['students_present'] : null;
+    final studentsPresentRaw = (sessionData is Map<String, dynamic>)
+        ? sessionData['students_present']
+        : null;
     if (studentsPresentRaw is List) {
       for (final v in studentsPresentRaw) {
         if (v is String) {
@@ -363,7 +367,9 @@ class SessionService {
         for (final doc in bySession.docs) {
           final data = doc.data();
           final statusRaw = data['status'];
-          final status = statusRaw is String ? statusRaw.trim().toLowerCase() : '';
+          final status = statusRaw is String
+              ? statusRaw.trim().toLowerCase()
+              : '';
           if (status != 'present') {
             continue;
           }
@@ -421,7 +427,8 @@ class SessionService {
     final absentStudentUids = <String>[];
     for (final studentDoc in enrolledSnap.docs) {
       final studentUid = studentDoc.id.trim();
-      final isPresent = studentUid.isNotEmpty && presentUids.contains(studentUid);
+      final isPresent =
+          studentUid.isNotEmpty && presentUids.contains(studentUid);
       if (!isPresent) {
         absentStudentUids.add(studentUid);
       }

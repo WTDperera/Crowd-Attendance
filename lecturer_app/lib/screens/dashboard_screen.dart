@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/module_service.dart';
 import '../services/session_service.dart';
+import '../models/module.dart';
 import 'scanner_screen.dart';
 import 'login_screen.dart';
 
@@ -13,13 +15,16 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _authService = AuthService();
+  final _moduleService = ModuleService();
   final _sessionService = SessionService();
   final _formKey = GlobalKey<FormState>();
-  final _moduleCodeController = TextEditingController();
   final _sessionTopicController = TextEditingController();
-  
+
   bool _isLoading = false;
   Map<String, dynamic>? _lecturerData;
+
+  Module? _selectedModule;
+  String? _selectedModuleId;
 
   @override
   void initState() {
@@ -29,7 +34,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
-    _moduleCodeController.dispose();
     _sessionTopicController.dispose();
     super.dispose();
   }
@@ -47,12 +51,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _createSession() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedModule == null) return;
 
     setState(() => _isLoading = true);
 
     try {
       final sessionId = await _sessionService.createSession(
-        moduleCode: _moduleCodeController.text.trim(),
+        moduleCode: _selectedModule!.code.trim(),
+        moduleId: _selectedModule!.id,
         sessionTopic: _sessionTopicController.text.trim(),
       );
 
@@ -60,14 +66,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       // Navigate to scanner screen
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ScannerScreen(sessionId: sessionId),
-        ),
+        MaterialPageRoute(builder: (_) => ScannerScreen(sessionId: sessionId)),
       );
 
       // Clear form
-      _moduleCodeController.clear();
       _sessionTopicController.clear();
+      setState(() {
+        _selectedModule = null;
+        _selectedModuleId = null;
+      });
     } catch (e) {
       if (!mounted) return;
 
@@ -93,10 +100,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Icon(Icons.add_circle, color: Colors.cyan.shade400),
             const SizedBox(width: 12),
-            const Text(
-              'Create Session',
-              style: TextStyle(color: Colors.white),
-            ),
+            const Text('Create Session', style: TextStyle(color: Colors.white)),
           ],
         ),
         content: Form(
@@ -104,38 +108,128 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
-                controller: _moduleCodeController,
-                style: const TextStyle(color: Colors.white),
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  labelText: 'Module Code',
-                  labelStyle: TextStyle(color: Colors.grey.shade400),
-                  hintText: 'e.g., SE3021',
-                  hintStyle: TextStyle(color: Colors.grey.shade600),
-                  prefixIcon: Icon(Icons.code, color: Colors.cyan.shade400),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.cyan.withOpacity(0.3)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.cyan.shade400, width: 2),
-                  ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.red.shade400),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.red.shade400, width: 2),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Enter module code';
+              Builder(
+                builder: (context) {
+                  final user = _authService.currentUser;
+                  if (user == null) {
+                    return Text(
+                      'User not authenticated',
+                      style: TextStyle(color: Colors.red.shade300),
+                    );
                   }
-                  return null;
+
+                  return StreamBuilder<List<Module>>(
+                    stream: _moduleService.watchModulesForLecturer(user.uid),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+
+                      if (snapshot.hasError) {
+                        return Text(
+                          snapshot.error.toString(),
+                          style: TextStyle(color: Colors.red.shade300),
+                        );
+                      }
+
+                      final modules = snapshot.data ?? <Module>[];
+                      if (modules.isEmpty) {
+                        return Text(
+                          'No modules available.',
+                          style: TextStyle(color: Colors.grey.shade400),
+                        );
+                      }
+
+                      final selectedStillExists =
+                          _selectedModuleId != null &&
+                          modules.any((m) => m.id == _selectedModuleId);
+                      if (!selectedStillExists && _selectedModuleId != null) {
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (!mounted) return;
+                          setState(() {
+                            _selectedModuleId = null;
+                            _selectedModule = null;
+                          });
+                        });
+                      }
+
+                      return DropdownButtonFormField<String>(
+                        key: ValueKey<String?>(_selectedModuleId),
+                        initialValue: _selectedModuleId,
+                        dropdownColor: const Color(0xFF1D1E33),
+                        iconEnabledColor: Colors.cyan.shade400,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Module',
+                          labelStyle: TextStyle(color: Colors.grey.shade400),
+                          hintText: 'Select module',
+                          hintStyle: TextStyle(color: Colors.grey.shade600),
+                          prefixIcon: Icon(
+                            Icons.book,
+                            color: Colors.cyan.shade400,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.cyan.withOpacity(0.3),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.cyan.shade400,
+                              width: 2,
+                            ),
+                          ),
+                          errorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(color: Colors.red.shade400),
+                          ),
+                          focusedErrorBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide(
+                              color: Colors.red.shade400,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        items: modules
+                            .map(
+                              (m) => DropdownMenuItem<String>(
+                                value: m.id,
+                                child: Text(
+                                  '${m.code} — ${m.name}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: _isLoading
+                            ? null
+                            : (value) {
+                                setState(() {
+                                  _selectedModuleId = value;
+                                  _selectedModule = value == null
+                                      ? null
+                                      : modules.firstWhere(
+                                          (m) => m.id == value,
+                                        );
+                                });
+                              },
+                        validator: (value) {
+                          if (value == null || value.isEmpty) {
+                            return 'Select module';
+                          }
+                          return null;
+                        },
+                      );
+                    },
+                  );
                 },
               ),
               const SizedBox(height: 16),
@@ -154,7 +248,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.cyan.shade400, width: 2),
+                    borderSide: BorderSide(
+                      color: Colors.cyan.shade400,
+                      width: 2,
+                    ),
                   ),
                   errorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -162,7 +259,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                   focusedErrorBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.red.shade400, width: 2),
+                    borderSide: BorderSide(
+                      color: Colors.red.shade400,
+                      width: 2,
+                    ),
                   ),
                 ),
                 validator: (value) {
@@ -187,8 +287,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: _isLoading
                 ? null
                 : () {
-                    Navigator.pop(context);
-                    _createSession();
+                    if (_formKey.currentState?.validate() ?? false) {
+                      Navigator.pop(context);
+                      _createSession();
+                    }
                   },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.cyan.shade400,
@@ -221,10 +323,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1D1E33),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Logout',
-          style: TextStyle(color: Colors.white),
-        ),
+        title: const Text('Logout', style: TextStyle(color: Colors.white)),
         content: const Text(
           'Are you sure you want to logout?',
           style: TextStyle(color: Colors.grey),
@@ -245,10 +344,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'Logout',
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text('Logout', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -273,10 +369,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         elevation: 0,
         title: const Text(
           'Attendance Dashboard',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -287,9 +380,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: SafeArea(
         child: _lecturerData == null
-            ? const Center(
-                child: CircularProgressIndicator(color: Colors.cyan),
-              )
+            ? const Center(child: CircularProgressIndicator(color: Colors.cyan))
             : SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -301,10 +392,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [
-                            Colors.cyan.shade400,
-                            Colors.blue.shade600,
-                          ],
+                          colors: [Colors.cyan.shade400, Colors.blue.shade600],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [

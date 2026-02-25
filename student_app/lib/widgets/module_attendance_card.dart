@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 import '../models/module_stats.dart';
 
 class ModuleAttendanceCard extends StatefulWidget {
-  const ModuleAttendanceCard({super.key, required this.stats, this.title});
+  const ModuleAttendanceCard({
+    super.key,
+    required this.stats,
+    this.title,
+    this.initiallyExpanded = false,
+  });
 
   final ModuleStats stats;
   final String? title;
+  final bool initiallyExpanded;
 
   @override
   State<ModuleAttendanceCard> createState() => _ModuleAttendanceCardState();
@@ -14,6 +20,12 @@ class ModuleAttendanceCard extends StatefulWidget {
 
 class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
   bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +46,12 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
 
     final attendedText =
         'Attended: ${widget.stats.presentCount}/${widget.stats.totalModuleSessions}';
+
+    final absentCount =
+        (widget.stats.totalModuleSessions - widget.stats.presentCount).clamp(
+          0,
+          1 << 30,
+        );
 
     return Card(
       child: Padding(
@@ -81,16 +99,41 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
                         attendedText,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _SmallPill(
+                            label: 'Present',
+                            value: '${widget.stats.presentCount}',
+                            color: Colors.green,
+                          ),
+                          _SmallPill(
+                            label: 'Absent',
+                            value: '$absentCount',
+                            color: Colors.redAccent,
+                          ),
+                          _SmallPill(
+                            label: 'Total',
+                            value: '${widget.stats.totalModuleSessions}',
+                            color: Colors.white70,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                TextButton(
+                TextButton.icon(
                   onPressed: () => setState(() => _expanded = !_expanded),
-                  child: Text(_expanded ? 'Hide' : 'Expand'),
+                  icon: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+                  label: Text(_expanded ? 'Hide' : 'Details'),
                 ),
               ],
             ),
             if (_expanded) ...[
+              const SizedBox(height: 12),
+              const Divider(height: 1),
               const SizedBox(height: 12),
               _buildRecords(context),
             ],
@@ -172,6 +215,44 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
             );
           }),
       ],
+    );
+  }
+}
+
+class _SmallPill extends StatelessWidget {
+  const _SmallPill({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white10,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: RichText(
+        text: TextSpan(
+          style: Theme.of(context).textTheme.labelMedium,
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            TextSpan(
+              text: value,
+              style: TextStyle(color: color, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

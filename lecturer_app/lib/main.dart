@@ -10,6 +10,8 @@ import 'dart:io' show Platform;
 import 'dart:convert' show utf8;
 
 import 'services/session_service.dart';
+import 'services/module_service.dart';
+import 'models/module.dart';
 
 // ============================================================================
 // MAIN ENTRY POINT
@@ -517,60 +519,150 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _createSession() async {
-    final moduleController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
     final topicController = TextEditingController();
+    final moduleService = ModuleService();
+    String? selectedModuleId;
+    Module? selectedModule;
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Create New Session'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: moduleController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Module Code',
-                hintText: 'e.g., SE3021',
-                prefixIcon: Icon(Icons.book, color: Color(0xFF00BCD4)),
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1D1E33),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: topicController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Session Topic',
-                hintText: 'e.g., OOP Concepts',
-                prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
+              title: const Text('Create New Session'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StreamBuilder<List<Module>>(
+                      stream: moduleService.watchModulesForLecturer(
+                        widget.user.uid,
+                      ),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+
+                        if (snapshot.hasError) {
+                          return Text(
+                            snapshot.error.toString(),
+                            style: const TextStyle(color: Colors.redAccent),
+                          );
+                        }
+
+                        final modules = snapshot.data ?? const <Module>[];
+                        if (modules.isEmpty) {
+                          return const Text(
+                            'No modules available.',
+                            style: TextStyle(color: Colors.white70),
+                          );
+                        }
+
+                        final stillExists =
+                            selectedModuleId != null &&
+                            modules.any((m) => m.id == selectedModuleId);
+                        if (!stillExists && selectedModuleId != null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            setDialogState(() {
+                              selectedModuleId = null;
+                              selectedModule = null;
+                            });
+                          });
+                        }
+
+                        return DropdownButtonFormField<String>(
+                          key: ValueKey<String?>(selectedModuleId),
+                          initialValue: selectedModuleId,
+                          dropdownColor: const Color(0xFF1D1E33),
+                          iconEnabledColor: const Color(0xFF00BCD4),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Module',
+                            hintText: 'Select module',
+                            prefixIcon: Icon(
+                              Icons.book,
+                              color: Color(0xFF00BCD4),
+                            ),
+                          ),
+                          items: modules
+                              .map(
+                                (m) => DropdownMenuItem<String>(
+                                  value: m.id,
+                                  child: Text(
+                                    '${m.code} — ${m.name}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              selectedModuleId = value;
+                              selectedModule = value == null
+                                  ? null
+                                  : modules.firstWhere((m) => m.id == value);
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Select module';
+                            }
+                            return null;
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: topicController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Session Topic',
+                        hintText: 'e.g., OOP Concepts',
+                        prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Enter session topic';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('CANCEL'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                  child: const Text('START SESSION'),
+                ),
+              ],
+            );
+          },
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (moduleController.text.isNotEmpty &&
-                  topicController.text.isNotEmpty) {
-                Navigator.pop(context, true);
-              }
-            },
-            child: const Text('START SESSION'),
-          ),
-        ],
-      ),
-    );
+      );
 
-    if (result == true && moduleController.text.isNotEmpty) {
-      try {
-        final moduleCode = moduleController.text.trim().toUpperCase();
+      if (result == true && selectedModule != null) {
+        final moduleCode = selectedModule!.code.trim().toUpperCase();
         final sessionTopic = topicController.text.trim();
 
         // Create session in Firestore
@@ -582,7 +674,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'module': moduleCode,
               'topic': sessionTopic,
               // Canonical fields used by services/modules
-              'module_id': moduleCode,
+              'module_id': selectedModule!.id,
               'module_code': moduleCode,
               'session_topic': sessionTopic,
               'created_at': FieldValue.serverTimestamp(),
@@ -602,16 +694,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           );
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error creating session: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      topicController.dispose();
     }
   }
 

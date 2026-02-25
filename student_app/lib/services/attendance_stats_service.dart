@@ -243,6 +243,25 @@ class AttendanceStatsService {
     }
 
     if (enrolled.isEmpty) {
+      // Source of truth: students/{uid}/enrollments/{moduleId}
+      try {
+        final enrollmentsSnap = await _firestore
+            .collection('students')
+            .doc(resolvedStudentId)
+            .collection('enrollments')
+            .get();
+        for (final doc in enrollmentsSnap.docs) {
+          final id = doc.id.trim();
+          if (id.isNotEmpty) {
+            enrolled.add(id.toUpperCase());
+          }
+        }
+      } catch (_) {
+        // Ignore (missing rules/index).
+      }
+    }
+
+    if (enrolled.isEmpty) {
       return const <ModuleStats>[];
     }
 
