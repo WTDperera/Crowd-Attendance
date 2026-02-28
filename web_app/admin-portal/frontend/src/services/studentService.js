@@ -1,5 +1,12 @@
 import axios from 'axios'
-import { auth } from '../firebase/firebase'
+import {
+  collection,
+  getDocs,
+  onSnapshot,
+  query,
+  where,
+} from 'firebase/firestore'
+import { auth, db } from '../firebase/firebase'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
@@ -88,4 +95,61 @@ export const deleteStudent = async (uid) => {
     const message = error?.response?.data?.message
     throw new Error(message || 'Unable to delete the student.')
   }
+}
+
+export const getStudentsEnrolledInModule = async (
+  moduleId,
+  onChange,
+  onError
+) => {
+  const trimmedModuleId = decodeURIComponent(moduleId).trim().toUpperCase()
+  if (!trimmedModuleId) {
+    throw new Error('Module code is required.')
+  }
+
+  const studentsQuery = query(
+    collection(db, 'students'),
+    where('enrolled_module_ids', 'array-contains', trimmedModuleId)
+  )
+
+  if (typeof onChange === 'function') {
+    return onSnapshot(
+      studentsQuery,
+      (snapshot) => {
+        const rows = snapshot.docs.map((studentDoc) => {
+          const data = studentDoc.data() || {}
+          return {
+            id: studentDoc.id,
+            uid: studentDoc.id,
+            ...data,
+            reg_no: data.reg_no || '',
+            email: data.email || '',
+            attendance_counts: data.attendance_counts || {},
+            absence_counts: data.absence_counts || {},
+          }
+        })
+
+        onChange(rows)
+      },
+      (error) => {
+        if (onError) {
+          onError(error)
+        }
+      }
+    )
+  }
+
+  const snapshot = await getDocs(studentsQuery)
+  return snapshot.docs.map((studentDoc) => {
+    const data = studentDoc.data() || {}
+    return {
+      id: studentDoc.id,
+      uid: studentDoc.id,
+      ...data,
+      reg_no: data.reg_no || '',
+      email: data.email || '',
+      attendance_counts: data.attendance_counts || {},
+      absence_counts: data.absence_counts || {},
+    }
+  })
 }

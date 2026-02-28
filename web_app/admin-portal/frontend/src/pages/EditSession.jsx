@@ -57,7 +57,7 @@ function EditSession() {
     const nextErrors = {}
 
     if (!formData.session_title.trim()) {
-      nextErrors.session_title = 'Session title is required.'
+      nextErrors.session_title = 'Session topic is required.'
     }
     if (!formData.date) {
       nextErrors.date = 'Date is required.'
@@ -125,7 +125,7 @@ function EditSession() {
 
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
         <div className="field-group">
-          <label htmlFor="sessionTitle">Session Title</label>
+          <label htmlFor="sessionTitle">Session Topic</label>
           <input
             id="sessionTitle"
             type="text"

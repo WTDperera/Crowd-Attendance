@@ -1,65 +1,84 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import {
-  getModuleAttendanceSummary,
-  getStudentAttendanceDetails,
-} from '../services/moduleAttendanceService'
+import { getModuleById } from '../services/moduleService'
+import { getStudentsEnrolledInModule } from '../services/studentService'
 
 function ModuleDetailsPage() {
-  const { id: moduleId } = useParams()
+  const { moduleId } = useParams()
   const navigate = useNavigate()
   const [moduleData, setModuleData] = useState(null)
-  const [activeSession, setActiveSession] = useState(null)
   const [students, setStudents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState('')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
-  const [detailStudent, setDetailStudent] = useState(null)
-  const [detailRecords, setDetailRecords] = useState([])
-  const [detailsLoading, setDetailsLoading] = useState(false)
-  const [detailsError, setDetailsError] = useState('')
+  const moduleKey = decodeURIComponent(moduleId || '').trim().toUpperCase()
+
+  const getCount = (student, prefix, key) => {
+    const mapVal = student?.[prefix]?.[key]
+    if (mapVal != null) {
+      return Number(mapVal)
+    }
+
+    const flatVal = student?.[`${prefix}.${key}`]
+    if (flatVal != null) {
+      return Number(flatVal)
+    }
+
+    return 0
+  }
 
   useEffect(() => {
     let isMounted = true
+    let unsubscribeStudents
 
-    const fetchSummary = async () => {
+    const fetchModule = async () => {
       setIsLoading(true)
       setErrorMessage('')
 
       try {
-        const response = await getModuleAttendanceSummary(
-          moduleId,
-          fromDate || undefined,
-          toDate || undefined
-        )
+        const response = await getModuleById(moduleKey)
 
         if (isMounted) {
-          setModuleData(response.module)
-          setActiveSession(response.activeSession)
-          setStudents(response.students || [])
+          setModuleData(response)
+          setStudents([])
         }
       } catch (error) {
         if (isMounted) {
           setErrorMessage(error.message)
           setModuleData(null)
-          setActiveSession(null)
           setStudents([])
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false)
         }
       }
     }
 
-    fetchSummary()
+    const subscribeStudents = () => {
+      unsubscribeStudents = getStudentsEnrolledInModule(
+        moduleKey,
+        (rows) => {
+          if (isMounted) {
+            setStudents(rows)
+            setIsLoading(false)
+          }
+        },
+        (error) => {
+          if (isMounted) {
+            setErrorMessage(error.message)
+            setStudents([])
+            setIsLoading(false)
+          }
+        }
+      )
+    }
+
+    fetchModule().then(subscribeStudents)
 
     return () => {
       isMounted = false
+      if (typeof unsubscribeStudents === 'function') {
+        unsubscribeStudents()
+      }
     }
-  }, [moduleId, fromDate, toDate])
+  }, [moduleKey])
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -69,55 +88,21 @@ function ModuleDetailsPage() {
     }
 
     return students.filter((student) => {
-      return (
-        (student.reg_no || '').toLowerCase().includes(query) ||
-        (student.email || '').toLowerCase().includes(query)
-      )
+      const regNo = (student.reg_no || '').toLowerCase()
+      const email = (student.email || '').toLowerCase()
+      return regNo.includes(query) || email.includes(query)
     })
   }, [students, search])
 
-  const openDetails = async (student) => {
-    setDetailStudent(student)
-    setDetailsError('')
-    setDetailsLoading(true)
-
-    try {
-      const records = await getStudentAttendanceDetails(moduleId, student.uid)
-      setDetailRecords(records)
-    } catch (error) {
-      setDetailsError(error.message)
-      setDetailRecords([])
-    } finally {
-      setDetailsLoading(false)
-    }
-  }
-
-  const closeDetails = () => {
-    setDetailStudent(null)
-    setDetailRecords([])
-    setDetailsError('')
-    setDetailsLoading(false)
-  }
-
-  const resolveStatus = (student) => {
-    if (student.total === 0) {
-      return { label: 'No Records', tone: 'warning' }
-    }
-
-    if (student.percentage < 80) {
-      return { label: 'Below 80%', tone: 'danger' }
-    }
-
-    return { label: 'On Track', tone: 'success' }
-  }
-
-  const formatDate = (value) => {
-    if (!value) {
-      return '—'
-    }
-
-    return new Date(value).toLocaleString()
-  }
+  const totalSessions = Number(moduleData?.total_sessions || 0)
+  const fallbackKey = (moduleData?.code || moduleKey || '').trim().toUpperCase()
+  const firstStudent = students[0]
+  const firstStudentFlatAttendance = firstStudent
+    ? firstStudent[`attendance_counts.${moduleKey}`]
+    : undefined
+  const firstStudentFlatAbsence = firstStudent
+    ? firstStudent[`absence_counts.${moduleKey}`]
+    : undefined
 
   if (isLoading) {
     return (
@@ -148,59 +133,75 @@ function ModuleDetailsPage() {
 
   return (
     <div className="dashboard-grid">
+      <section className="card">
+        <div className="card-header row">
+          <div>
+            <h4>Debug</h4>
+            <span className="helper-text">Temporary diagnostics for attendance.</span>
+          </div>
+        </div>
+        <p className="helper-text">moduleKey: {moduleKey || '—'}</p>
+        <p className="helper-text">
+          attendance_counts keys:{' '}
+          {firstStudent
+            ? Object.keys(firstStudent.attendance_counts || {}).join(', ') || '—'
+            : '—'}
+        </p>
+        <p className="helper-text">
+          attendance_counts.{moduleKey}:{' '}
+          {firstStudentFlatAttendance ?? '—'}
+        </p>
+        <p className="helper-text">
+          absence_counts keys:{' '}
+          {firstStudent
+            ? Object.keys(firstStudent.absence_counts || {}).join(', ') || '—'
+            : '—'}
+        </p>
+        <p className="helper-text">
+          absence_counts.{moduleKey}:{' '}
+          {firstStudentFlatAbsence ?? '—'}
+        </p>
+        <pre className="code-block">
+          {firstStudent ? JSON.stringify(firstStudent, null, 2) : 'No student data'}
+        </pre>
+      </section>
+
       <section className="card module-detail">
         <div className="module-detail-header">
           <div>
-            <p className="module-code">{moduleData.module_code}</p>
-            <h4>{moduleData.module_name}</h4>
+            <p className="module-code">{moduleData.code}</p>
+            <h4>{moduleData.name}</h4>
           </div>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() => navigate('/modules')}
+          >
+            Back to Modules
+          </button>
         </div>
         <div className="module-meta-grid">
           <div>
-            <p className="meta-label">Department</p>
-            <p className="meta-value">{moduleData.department || '—'}</p>
+            <p className="meta-label">Lecturer</p>
+            <p className="meta-value">{moduleData.lecturer_id || '—'}</p>
           </div>
           <div>
-            <p className="meta-label">Level</p>
-            <p className="meta-value">{moduleData.level || '—'}</p>
+            <p className="meta-label">Total Sessions</p>
+            <p className="meta-value">{totalSessions}</p>
           </div>
           <div>
-            <p className="meta-label">Semester</p>
-            <p className="meta-value">{moduleData.semester || '—'}</p>
+            <p className="meta-label">Enrollment</p>
+            <p className="meta-value">
+              {moduleData.enrollment_enabled ? 'Enabled' : 'Disabled'}
+            </p>
           </div>
         </div>
       </section>
 
-      {activeSession && (
-        <section className="card">
-          <div className="card-header row">
-            <div>
-              <h4>Active Session</h4>
-              <span className="helper-text">Live attendance is running.</span>
-            </div>
-            <span className="status-pill info">Active</span>
-          </div>
-          <div className="module-meta-grid">
-            <div>
-              <p className="meta-label">Topic</p>
-              <p className="meta-value">{activeSession.topic || '—'}</p>
-            </div>
-            <div>
-              <p className="meta-label">Started</p>
-              <p className="meta-value">{formatDate(activeSession.started_at)}</p>
-            </div>
-            <div>
-              <p className="meta-label">Students Present</p>
-              <p className="meta-value">{activeSession.student_count}</p>
-            </div>
-          </div>
-        </section>
-      )}
-
       <section className="card">
         <div className="card-header row">
           <div>
-            <h4>Students & Attendance</h4>
+            <h4>Enrolled Students</h4>
             <span className="helper-text">
               Attendance totals for enrolled students.
             </span>
@@ -216,16 +217,6 @@ function ModuleDetailsPage() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(event) => setFromDate(event.target.value)}
-          />
-          <input
-            type="date"
-            value={toDate}
-            onChange={(event) => setToDate(event.target.value)}
-          />
         </div>
 
         <div className="table-wrap">
@@ -238,42 +229,38 @@ function ModuleDetailsPage() {
                 <th>Absent</th>
                 <th>Total</th>
                 <th>Attendance %</th>
-                <th>Status</th>
-                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredStudents.map((student) => {
-                const status = resolveStatus(student)
+                const primaryValue = getCount(student, 'attendance_counts', moduleKey)
+                const keyToUse = primaryValue !== 0 ? moduleKey : fallbackKey
+                const presentCount = getCount(student, 'attendance_counts', keyToUse)
+                const absentCount = getCount(student, 'absence_counts', keyToUse)
+                const total = presentCount + absentCount
+                const percentage =
+                  total === 0
+                    ? 0
+                    : Math.round((presentCount / total) * 100)
                 return (
-                  <tr key={student.uid}>
-                    <td>{student.reg_no}</td>
-                    <td>{student.email}</td>
-                    <td>{student.presentCount}</td>
-                    <td>{student.absentCount}</td>
-                    <td>{student.total}</td>
-                    <td>{student.percentage}%</td>
+                  <tr key={student.uid || student.id}>
+                    <td>{student.reg_no || '—'}</td>
+                    <td>{student.email || '—'}</td>
+                    <td>{presentCount}</td>
+                    <td>{absentCount}</td>
+                    <td>{total}</td>
                     <td>
-                      <span className={`status-pill ${status.tone}`}>
-                        {status.label}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        className="text-link"
-                        type="button"
-                        onClick={() => openDetails(student)}
-                      >
-                        View Details
-                      </button>
+                      <span className="status-pill info">{percentage}%</span>
                     </td>
                   </tr>
                 )
               })}
               {filteredStudents.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="empty-cell">
-                    No students match your filters.
+                  <td colSpan="6" className="empty-cell">
+                    {students.length === 0
+                      ? 'No students enrolled.'
+                      : 'No students match your filters.'}
                   </td>
                 </tr>
               )}
@@ -281,71 +268,6 @@ function ModuleDetailsPage() {
           </table>
         </div>
       </section>
-
-      {detailStudent && (
-        <div className="modal-backdrop" role="dialog" aria-modal="true">
-          <div className="modal-card">
-            <div className="modal-header">
-              <div>
-                <p className="modal-title">Attendance Details</p>
-                <p className="helper-text">
-                  {detailStudent.reg_no} • {detailStudent.email}
-                </p>
-              </div>
-              <button className="ghost-button" type="button" onClick={closeDetails}>
-                Close
-              </button>
-            </div>
-
-            {detailsError && <span className="field-error">{detailsError}</span>}
-
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Session</th>
-                    <th>Status</th>
-                    <th>Recorded</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {detailsLoading && (
-                    <tr>
-                      <td colSpan="4" className="empty-cell">
-                        Loading details...
-                      </td>
-                    </tr>
-                  )}
-                  {!detailsLoading && detailRecords.map((record) => (
-                    <tr key={record.id}>
-                      <td>{record.date || '—'}</td>
-                      <td>{record.session_id || '—'}</td>
-                      <td>
-                        <span
-                          className={`status-pill ${
-                            record.status === 'Absent' ? 'danger' : 'success'
-                          }`}
-                        >
-                          {record.status}
-                        </span>
-                      </td>
-                      <td>{formatDate(record.timestamp)}</td>
-                    </tr>
-                  ))}
-                  {!detailsLoading && detailRecords.length === 0 && (
-                    <tr>
-                      <td colSpan="4" className="empty-cell">
-                        No attendance records.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

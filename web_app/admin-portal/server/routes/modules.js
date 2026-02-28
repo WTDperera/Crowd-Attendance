@@ -3,7 +3,19 @@ const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 const { db } = require('../firebaseAdmin');
 
 const router = express.Router();
-const ENROLL_FIELD = 'modules';
+const ENROLL_FIELD = 'enrolled_module_ids';
+
+const mapSessionDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value.toDate === 'function') {
+    return value.toDate().toISOString();
+  }
+
+  return value;
+};
 
 const normalizeModule = (doc) => {
   const data = doc.data();
@@ -11,57 +23,17 @@ const normalizeModule = (doc) => {
   return {
     id: doc.id,
     module_id: data.module_id || doc.id,
-    module_code: data.module_code || data.code || '',
-    module_name: data.module_name || data.name || '',
+    module_code: data.code || data.module_code || data.module_id || doc.id || '',
+    module_name: data.name || data.module_name || '',
     department: data.department || '',
     level: data.level || '',
     semester: data.semester || '',
+    lecturer_id: data.lecturer_id || '',
+    total_sessions: data.total_sessions || 0,
+    session_dates: Array.isArray(data.session_dates)
+      ? data.session_dates.map(mapSessionDate).filter(Boolean)
+      : [],
   };
-};
-
-const isWithinRange = (value, from, to) => {
-  if (!value) {
-    return false;
-  }
-
-  if (from && value < from) {
-    return false;
-  }
-
-  if (to && value > to) {
-    return false;
-  }
-
-  return true;
-};
-
-const matchesEnrollment = (fieldValue, moduleId, moduleCode) => {
-  if (!fieldValue) {
-    return false;
-  }
-
-  if (Array.isArray(fieldValue)) {
-    return fieldValue.some((entry) => {
-      if (typeof entry === 'string') {
-        return entry === moduleId || (moduleCode && entry === moduleCode);
-      }
-
-      if (entry && typeof entry === 'object') {
-        return (
-          entry.module_id === moduleId ||
-          (moduleCode && entry.module_code === moduleCode)
-        );
-      }
-
-      return false;
-    });
-  }
-
-  if (typeof fieldValue === 'object') {
-    return Boolean(fieldValue[moduleId] || (moduleCode && fieldValue[moduleCode]));
-  }
-
-  return false;
 };
 
 const mapTimestamp = (value) => {
@@ -72,26 +44,45 @@ const mapTimestamp = (value) => {
   return value.toDate().toISOString();
 };
 
-const buildCountMap = (docs, from, to) => {
-  const counts = new Map();
+const normalizeRecord = (doc, fallbackStatus) => {
+  const data = doc.data();
+  return {
+    id: doc.id,
+    date: data.date || null,
+    session_id: data.session_id || null,
+    status: data.status || fallbackStatus,
+    timestamp: mapTimestamp(data.timestamp) || mapTimestamp(data.marked_at),
+  };
+};
 
-  docs.forEach((doc) => {
-    const data = doc.data();
-    const dateValue = data.date;
+const buildRecordKey = (record) => {
+  return record.session_id || record.date || record.id;
+};
 
-    if (!isWithinRange(dateValue, from, to)) {
-      return;
-    }
-
-    const uid = data.student_uid;
-    if (!uid) {
-      return;
-    }
-
-    counts.set(uid, (counts.get(uid) || 0) + 1);
+const sortByTimestampDesc = (records) => {
+  return records.sort((a, b) => {
+    const aValue = a.timestamp ? Date.parse(a.timestamp) : Date.parse(a.date || '') || 0;
+    const bValue = b.timestamp ? Date.parse(b.timestamp) : Date.parse(b.date || '') || 0;
+    return bValue - aValue;
   });
+};
 
-  return counts;
+const fetchStudentRecords = async (collectionName, moduleId, uid, studentFields, fallbackStatus) => {
+  const records = [];
+
+  for (const field of studentFields) {
+    const snapshot = await db
+      .collection(collectionName)
+      .where('module_id', '==', moduleId)
+      .where(field, '==', uid)
+      .get();
+
+    snapshot.docs.forEach((doc) => {
+      records.push(normalizeRecord(doc, fallbackStatus));
+    });
+  }
+
+  return records;
 };
 
 router.get('/modules', verifyFirebaseToken, async (req, res) => {
@@ -112,7 +103,6 @@ router.get(
   verifyFirebaseToken,
   async (req, res) => {
     const { moduleId } = req.params;
-    const { from, to } = req.query;
 
     try {
       let moduleDoc = await db.collection('modules').doc(moduleId).get();
@@ -130,61 +120,21 @@ router.get(
       }
 
       const moduleData = normalizeModule(moduleDoc);
-      const moduleCode = moduleData.module_code || moduleId;
-
-      let studentDocs = [];
-      const queryById = await db
+      const studentSnapshot = await db
         .collection('students')
         .where(ENROLL_FIELD, 'array-contains', moduleId)
         .get();
 
-      if (queryById.size > 0) {
-        studentDocs = queryById.docs;
-      } else if (moduleCode && moduleCode !== moduleId) {
-        const queryByCode = await db
-          .collection('students')
-          .where(ENROLL_FIELD, 'array-contains', moduleCode)
-          .get();
-        studentDocs = queryByCode.docs;
-      }
-
-      if (studentDocs.length === 0) {
-        const allStudentsSnapshot = await db.collection('students').get();
-        studentDocs = allStudentsSnapshot.docs.filter((doc) =>
-          matchesEnrollment(doc.data()[ENROLL_FIELD], moduleId, moduleCode)
-        );
-      }
-
-      const enrolledStudents = studentDocs.map((doc) => ({
-        uid: doc.id,
-        reg_no: doc.data().reg_no || '',
-        email: doc.data().email || '',
-      }));
-
-      const attendanceSnapshot = await db
-        .collection('attendance_record')
-        .where('module_id', '==', moduleId)
-        .get();
-      const absenceSnapshot = await db
-        .collection('absence_record')
-        .where('module_id', '==', moduleId)
-        .get();
-
-      const presentCounts = buildCountMap(attendanceSnapshot.docs, from, to);
-      const absentCounts = buildCountMap(absenceSnapshot.docs, from, to);
-
-      const students = enrolledStudents.map((student) => {
-        const presentCount = presentCounts.get(student.uid) || 0;
-        const absentCount = absentCounts.get(student.uid) || 0;
-        const total = presentCount + absentCount;
-        const percentage = total === 0 ? 0 : Math.round((presentCount / total) * 1000) / 10;
+      const students = studentSnapshot.docs.map((doc) => {
+        const data = doc.data();
+        const attendanceCounts = data.attendance_counts || {};
+        const presentCount = Number(attendanceCounts[moduleId] || 0);
 
         return {
-          ...student,
-          presentCount,
-          absentCount,
-          total,
-          percentage,
+          uid: doc.id,
+          reg_no: data.reg_no || '',
+          email: data.email || '',
+          present_count: presentCount,
         };
       });
 
@@ -229,47 +179,32 @@ router.get(
     const { moduleId, uid } = req.params;
 
     try {
-      const attendanceSnapshot = await db
-        .collection('attendance_record')
-        .where('module_id', '==', moduleId)
-        .where('student_uid', '==', uid)
-        .get();
-      const absenceSnapshot = await db
-        .collection('absence_record')
-        .where('module_id', '==', moduleId)
-        .where('student_uid', '==', uid)
-        .get();
+      const studentFields = ['student_uid', 'student_id'];
 
-      const presentRecords = attendanceSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          date: data.date || null,
-          session_id: data.session_id || null,
-          status: data.status || 'present',
-          timestamp: mapTimestamp(data.timestamp),
-        };
+      const presentRecords = [
+        ...(await fetchStudentRecords('attendance_records', moduleId, uid, studentFields, 'present')),
+        ...(await fetchStudentRecords('attendance_record', moduleId, uid, studentFields, 'present')),
+      ];
+
+      const absentRecords = [
+        ...(await fetchStudentRecords('absence_records', moduleId, uid, studentFields, 'Absent')),
+        ...(await fetchStudentRecords('absence_record', moduleId, uid, studentFields, 'Absent')),
+      ];
+
+      const merged = new Map();
+
+      presentRecords.forEach((record) => {
+        merged.set(buildRecordKey(record), record);
       });
 
-      const absentRecords = absenceSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          date: data.date || null,
-          session_id: data.session_id || null,
-          status: data.status || 'Absent',
-          timestamp: mapTimestamp(data.timestamp),
-        };
-      });
-
-      const records = [...presentRecords, ...absentRecords].sort((a, b) => {
-        const dateCompare = (b.date || '').localeCompare(a.date || '');
-        if (dateCompare !== 0) {
-          return dateCompare;
+      absentRecords.forEach((record) => {
+        const key = buildRecordKey(record);
+        if (!merged.has(key)) {
+          merged.set(key, record);
         }
-
-        return (b.timestamp || '').localeCompare(a.timestamp || '');
       });
+
+      const records = sortByTimestampDesc(Array.from(merged.values()));
 
       return res.json({ records });
     } catch (error) {

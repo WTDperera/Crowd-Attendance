@@ -14,23 +14,14 @@ const getIdToken = async () => {
   return currentUser.getIdToken()
 }
 
-export const getModuleAttendanceSummary = async (moduleId, from, to) => {
+export const getModuleAttendanceSummary = async (moduleId) => {
   const token = await getIdToken()
-  const params = {}
-
-  if (from) {
-    params.from = from
-  }
-  if (to) {
-    params.to = to
-  }
 
   try {
     const response = await api.get(`/api/modules/${moduleId}/attendance-summary`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
-      params,
     })
 
     return response.data

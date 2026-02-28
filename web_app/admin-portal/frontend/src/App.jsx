@@ -35,7 +35,7 @@ function App() {
                 <Route path="/dashboard" element={<DashboardHome />} />
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/modules/new" element={<AddModule />} />
-                <Route path="/modules/:id" element={<ModuleDetailsPage />} />
+                <Route path="/modules/:moduleId" element={<ModuleDetailsPage />} />
                 <Route path="/modules/:id/edit" element={<EditModule />} />
                 <Route
                   path="/modules/:id/sessions/new"
