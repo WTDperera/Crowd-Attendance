@@ -10,7 +10,7 @@
 
 ## 🔴 Previous Security Issue
 
-### The Problem
+r### The Problem
 
 The original implementation broadcasted the student's Registration Number as the **BLE Local Name**:
 
