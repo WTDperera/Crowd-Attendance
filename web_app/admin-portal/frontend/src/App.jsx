@@ -15,6 +15,7 @@ import EditSession from './pages/EditSession.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ModuleDetailsPage from './pages/ModuleDetailsPage.jsx'
 import DashboardHome from './pages/DashboardHome.jsx'
+import DashboardPage from './pages/DashboardPage.jsx'
 import ModulesPage from './pages/ModulesPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
@@ -32,7 +33,7 @@ function App() {
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
                 <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardHome />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/modules/new" element={<AddModule />} />
                 <Route path="/modules/:moduleId" element={<ModuleDetailsPage />} />
