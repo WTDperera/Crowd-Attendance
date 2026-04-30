@@ -1,2 +1,12 @@
-serviceAccountKey.json
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+
+# Environment variables
 .env
+
+# Firebase / service secrets
+serviceAccountKey.json

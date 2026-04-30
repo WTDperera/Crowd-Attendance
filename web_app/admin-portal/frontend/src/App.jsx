@@ -20,6 +20,7 @@ import ModulesPage from './pages/ModulesPage.jsx'
 import RegisterPage from './pages/RegisterPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import StudentsList from './pages/StudentsList.jsx'
+import ForgotPassword from './pages/ForgotPasswordPage.jsx'
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
 
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>

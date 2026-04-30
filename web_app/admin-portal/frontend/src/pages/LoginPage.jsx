@@ -140,7 +140,7 @@ function LoginPage() {
             />
             Remember me
           </label>
-          <Link className="text-link" to="/login">
+          <Link className="text-link" to="/forgot-password">
             Forgot password?
           </Link>
         </div>
