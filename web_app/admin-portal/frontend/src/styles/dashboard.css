@@ -561,4 +561,40 @@
     flex-direction: column;
     align-items: flex-start;
   }
+
+  .button-group {
+    flex-direction: column;
+  }
+}
+
+/* Button group for multiple buttons */
+.button-group {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.button-group button {
+  white-space: nowrap;
+}
+
+/* Export message styles */
+.export-message {
+  padding: 14px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  border-left: 4px solid;
+}
+
+.export-message.success {
+  background-color: #d4edda;
+  color: #155724;
+  border-left-color: #28a745;
+}
+
+.export-message.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border-left-color: #f5c6cb;
 }

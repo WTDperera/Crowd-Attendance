@@ -215,4 +215,6 @@ router.get(
   }
 );
 
+// Note: attendance export moved to routes/attendanceRoutes.js
+
 module.exports = router;

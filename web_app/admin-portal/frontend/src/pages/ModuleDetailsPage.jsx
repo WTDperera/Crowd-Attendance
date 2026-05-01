@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getModuleById } from '../services/moduleService'
 import { getStudentsEnrolledInModule } from '../services/studentService'
+import { downloadAttendanceExcel } from '../services/attendanceExportService'
+import AttendanceExportModal from '../components/AttendanceExportModal'
 
 function ModuleDetailsPage() {
   const { moduleId } = useParams()
@@ -11,6 +13,9 @@ function ModuleDetailsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState('')
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportMessage, setExportMessage] = useState({ type: '', text: '' })
   const moduleKey = decodeURIComponent(moduleId || '').trim().toUpperCase()
 
   const getCount = (student, prefix, key) => {
@@ -94,6 +99,41 @@ function ModuleDetailsPage() {
     })
   }, [students, search])
 
+  const handleExportClick = () => {
+    setExportMessage({ type: '', text: '' })
+    setIsExportModalOpen(true)
+  }
+
+  const handleExport = async (options) => {
+    setIsExporting(true)
+    setExportMessage({ type: '', text: '' })
+
+    try {
+      await downloadAttendanceExcel(
+        moduleKey,
+        options.startDate,
+        options.endDate
+      )
+      setExportMessage({
+        type: 'success',
+        text: 'Attendance records downloaded successfully!',
+      })
+      setIsExportModalOpen(false)
+
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        setExportMessage({ type: '', text: '' })
+      }, 3000)
+    } catch (error) {
+      setExportMessage({
+        type: 'error',
+        text: error.message || 'Failed to download attendance records.',
+      })
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const totalSessions = Number(moduleData?.total_sessions || 0)
   const fallbackKey = (moduleData?.code || moduleKey || '').trim().toUpperCase()
   const firstStudent = students[0]
@@ -172,13 +212,23 @@ function ModuleDetailsPage() {
             <p className="module-code">{moduleData.code}</p>
             <h4>{moduleData.name}</h4>
           </div>
-          <button
-            className="ghost-button"
-            type="button"
-            onClick={() => navigate('/modules')}
-          >
-            Back to Modules
-          </button>
+          <div className="button-group">
+            <button
+              className="primary-button"
+              type="button"
+              onClick={handleExportClick}
+              title="Download attendance records as Excel file"
+            >
+              📥 Download Attendance Excel
+            </button>
+            <button
+              className="ghost-button"
+              type="button"
+              onClick={() => navigate('/modules')}
+            >
+              Back to Modules
+            </button>
+          </div>
         </div>
         <div className="module-meta-grid">
           <div>
@@ -268,6 +318,21 @@ function ModuleDetailsPage() {
           </table>
         </div>
       </section>
+
+      {exportMessage.text && (
+        <section className={`card export-message ${exportMessage.type}`}>
+          <p>{exportMessage.text}</p>
+        </section>
+      )}
+
+      <AttendanceExportModal
+        isOpen={isExportModalOpen}
+        moduleName={moduleData?.name}
+        moduleId={moduleKey}
+        onClose={() => setIsExportModalOpen(false)}
+        onExport={handleExport}
+        isLoading={isExporting}
+      />
     </div>
   )
 }
