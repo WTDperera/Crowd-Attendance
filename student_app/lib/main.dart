@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:async' show TimeoutException;
 import 'dart:io' show Platform;
 import 'dart:convert' show utf8;
 import 'dart:typed_data' show Uint8List;
@@ -36,7 +37,7 @@ void main() async {
 // ============================================================================
 
 class StudentApp extends StatelessWidget {
-  const StudentApp({Key? key}) : super(key: key);
+  const StudentApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +52,6 @@ class StudentApp extends StatelessWidget {
           primary: const Color(0xFF00BCD4),
           secondary: const Color(0xFF00BCD4),
           surface: const Color(0xFF1D1E33),
-          background: const Color(0xFF0A0E21),
         ),
         cardTheme: CardThemeData(
           color: const Color(0xFF1D1E33),
@@ -127,7 +127,7 @@ class StudentApp extends StatelessWidget {
 // ============================================================================
 
 class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({Key? key}) : super(key: key);
+  const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -160,7 +160,7 @@ class AuthWrapper extends StatelessWidget {
 // ============================================================================
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -200,7 +200,8 @@ class _LoginScreenState extends State<LoginScreen> {
           .signInWithEmailAndPassword(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
-          );
+          )
+          .timeout(const Duration(seconds: 20));
 
       final uid = userCredential.user!.uid;
       final currentDeviceId = await _getDeviceId();
@@ -209,7 +210,9 @@ class _LoginScreenState extends State<LoginScreen> {
       final studentRef = FirebaseFirestore.instance
           .collection('students')
           .doc(uid);
-      final studentDoc = await studentRef.get();
+        final studentDoc = await studentRef
+          .get()
+          .timeout(const Duration(seconds: 20));
 
       if (!studentDoc.exists) {
         await FirebaseAuth.instance.signOut();
@@ -245,9 +248,20 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       // Update last login timestamp
-      await studentRef.update({'last_login': FieldValue.serverTimestamp()});
+      await studentRef
+          .update({'last_login': FieldValue.serverTimestamp()})
+          .timeout(const Duration(seconds: 20));
 
       // Login successful - AuthWrapper will handle navigation
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login timed out. Check your connection and try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
       switch (e.code) {
@@ -494,7 +508,7 @@ class _LoginScreenState extends State<LoginScreen> {
 class BroadcastScreen extends StatefulWidget {
   final User user;
 
-  const BroadcastScreen({Key? key, required this.user}) : super(key: key);
+  const BroadcastScreen({super.key, required this.user});
 
   @override
   State<BroadcastScreen> createState() => _BroadcastScreenState();
