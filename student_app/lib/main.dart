@@ -6,9 +6,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:async' show TimeoutException;
 import 'dart:io' show Platform;
 import 'dart:convert' show utf8;
 import 'dart:typed_data' show Uint8List;
+
+import 'screens/my_modules_screen.dart';
+import 'screens/modules_screen.dart';
 
 // ============================================================================
 // MAIN ENTRY POINT
@@ -17,14 +21,14 @@ import 'dart:typed_data' show Uint8List;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  
+
   runApp(const StudentApp());
 }
 
@@ -33,7 +37,7 @@ void main() async {
 // ============================================================================
 
 class StudentApp extends StatelessWidget {
-  const StudentApp({Key? key}) : super(key: key);
+  const StudentApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +52,6 @@ class StudentApp extends StatelessWidget {
           primary: const Color(0xFF00BCD4),
           secondary: const Color(0xFF00BCD4),
           surface: const Color(0xFF1D1E33),
-          background: const Color(0xFF0A0E21),
         ),
         cardTheme: CardThemeData(
           color: const Color(0xFF1D1E33),
@@ -108,7 +111,7 @@ class StudentApp extends StatelessWidget {
         snackBarTheme: SnackBarThemeData(
           backgroundColor: const Color(0xFF1D1E33),
           contentTextStyle: const TextStyle(color: Colors.white),
-          behavior: SnackBarBehavior.floating,
+          behavior: SnackBarBehavior.fixed,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
@@ -124,7 +127,7 @@ class StudentApp extends StatelessWidget {
 // ============================================================================
 
 class AuthWrapper extends StatelessWidget {
-  const AuthWrapper({Key? key}) : super(key: key);
+  const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -141,11 +144,11 @@ class AuthWrapper extends StatelessWidget {
             ),
           );
         }
-        
+
         if (snapshot.hasData && snapshot.data != null) {
           return BroadcastScreen(user: snapshot.data!);
         }
-        
+
         return const LoginScreen();
       },
     );
@@ -157,7 +160,7 @@ class AuthWrapper extends StatelessWidget {
 // ============================================================================
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -193,17 +196,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Step 1: Authenticate with Firebase Auth
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          )
+          .timeout(const Duration(seconds: 20));
 
       final uid = userCredential.user!.uid;
       final currentDeviceId = await _getDeviceId();
 
       // Step 2: Check Firestore for device binding
-      final studentRef = FirebaseFirestore.instance.collection('students').doc(uid);
-      final studentDoc = await studentRef.get();
+      final studentRef = FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid);
+        final studentDoc = await studentRef
+          .get()
+          .timeout(const Duration(seconds: 20));
 
       if (!studentDoc.exists) {
         await FirebaseAuth.instance.signOut();
@@ -211,16 +220,16 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final data = studentDoc.data()!;
-      final storedDeviceId = data['device_id'];
+      final storedDeviceId = data['device_id']?.toString().trim();
 
       // Step 3: Device Binding Logic
       if (storedDeviceId == null || storedDeviceId.isEmpty) {
         // First login - bind this device
-        await studentRef.update({
+        await studentRef.set({
           'device_id': currentDeviceId,
           'device_locked_at': FieldValue.serverTimestamp(),
-        });
-        
+        }, SetOptions(merge: true));
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -229,21 +238,30 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
         }
-      } else if (storedDeviceId != currentDeviceId) {
+      } else if (storedDeviceId != currentDeviceId.trim()) {
         // Device mismatch - BLOCK LOGIN
         await FirebaseAuth.instance.signOut();
         throw Exception(
           'Unauthorized Device\n\nThis account is locked to another device. '
-          'Contact your administrator to reset device binding.'
+          'Contact your administrator to reset device binding.',
         );
       }
 
       // Update last login timestamp
-      await studentRef.update({
-        'last_login': FieldValue.serverTimestamp(),
-      });
+      await studentRef
+          .update({'last_login': FieldValue.serverTimestamp()})
+          .timeout(const Duration(seconds: 20));
 
       // Login successful - AuthWrapper will handle navigation
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login timed out. Check your connection and try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
       switch (e.code) {
@@ -262,7 +280,7 @@ class _LoginScreenState extends State<LoginScreen> {
         default:
           message = 'Authentication error: ${e.message}';
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -319,17 +337,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Title
                   Text(
                     'Student Login',
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
                   const SizedBox(height: 8),
-                  
+
                   // Subtitle
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1D1E33),
                       borderRadius: BorderRadius.circular(8),
@@ -351,7 +372,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 48),
-                  
+
                   // Email Field
                   TextFormField(
                     controller: _emailController,
@@ -360,7 +381,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Email Address',
-                      prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF00BCD4)),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Color(0xFF00BCD4),
+                      ),
                       hintText: 'eg123456@sjp.ac.lk',
                     ),
                     validator: (value) {
@@ -374,7 +398,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Password Field
                   TextFormField(
                     controller: _passwordController,
@@ -383,10 +407,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF00BCD4)),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: Color(0xFF00BCD4),
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                           color: Colors.white54,
                         ),
                         onPressed: () {
@@ -403,7 +432,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onFieldSubmitted: (_) => _handleLogin(),
                   ),
                   const SizedBox(height: 40),
-                  
+
                   // Login Button
                   SizedBox(
                     width: double.infinity,
@@ -416,14 +445,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
+                                ),
                               ),
                             )
                           : const Text('LOGIN'),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   // Info Text
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -445,9 +476,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Expanded(
                           child: Text(
                             'Accounts are admin-created only.\nContact your institution for credentials.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 12,
-                            ),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                           ),
                         ),
                       ],
@@ -476,14 +507,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
 class BroadcastScreen extends StatefulWidget {
   final User user;
-  
-  const BroadcastScreen({Key? key, required this.user}) : super(key: key);
+
+  const BroadcastScreen({super.key, required this.user});
 
   @override
   State<BroadcastScreen> createState() => _BroadcastScreenState();
 }
 
-class _BroadcastScreenState extends State<BroadcastScreen> 
+class _BroadcastScreenState extends State<BroadcastScreen>
     with SingleTickerProviderStateMixin {
   final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
   bool _isBroadcasting = false;
@@ -509,7 +540,7 @@ class _BroadcastScreenState extends State<BroadcastScreen>
           .collection('students')
           .doc(widget.user.uid)
           .get();
-      
+
       if (doc.exists) {
         setState(() {
           _regNo = doc.data()?['reg_no'];
@@ -535,7 +566,9 @@ class _BroadcastScreenState extends State<BroadcastScreen>
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Permission denied: ${permission.toString().split('.').last}'),
+                content: Text(
+                  'Permission denied: ${permission.toString().split('.').last}',
+                ),
                 backgroundColor: Colors.red,
               ),
             );
@@ -574,24 +607,22 @@ class _BroadcastScreenState extends State<BroadcastScreen>
         print("========================================");
 
         // Configure BLE advertising with manufacturer data
-        // BLE Manufacturer Data Format: [LSB, MSB, ...data]
-        // Company ID 0xFFFF = [0xFF, 0xFF] in little-endian
         final regNoBytes = utf8.encode(_regNo!);
-        final manufacturerBytes = Uint8List.fromList([
-          0xFF, 0xFF, // Company ID 0xFFFF (little-endian)
-          ...regNoBytes, // Registration number as UTF-8 bytes
-        ]);
-        
+        final manufacturerData = Uint8List.fromList(regNoBytes);
+
         print("🔒 Encoding RegNo as manufacturer data:");
         print("   Original: $_regNo");
         print("   Company ID: 0xFFFF (Unreserved)");
         print("   Data Bytes: ${regNoBytes.length} bytes");
-        print("   Full Packet: ${manufacturerBytes.length} bytes = [0xFF, 0xFF, ...data]");
-        
+        print(
+          "   Full Packet: ${manufacturerData.length} bytes (manufacturerId provided separately)",
+        );
+
         final advertiseData = AdvertiseData(
           serviceUuid: SERVICE_UUID,
           localName: "SJP", // Short name to save packet space
-          manufacturerData: manufacturerBytes,
+          manufacturerId: 0xFFFF,
+          manufacturerData: manufacturerData,
         );
 
         final advertiseSettings = AdvertiseSettings(
@@ -611,7 +642,9 @@ class _BroadcastScreenState extends State<BroadcastScreen>
 
         print("✅ Broadcasting Active!");
         print("✅ Local Name: SJP");
-        print("✅ Manufacturer Data: Company 0xFFFF with ${regNoBytes.length} bytes");
+        print(
+          "✅ Manufacturer Data: Company 0xFFFF with ${regNoBytes.length} bytes",
+        );
         print("========================================");
 
         if (mounted) {
@@ -662,6 +695,28 @@ class _BroadcastScreenState extends State<BroadcastScreen>
         title: const Text('Student Broadcaster'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.library_books),
+            tooltip: 'Modules',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ModulesScreen(studentUid: widget.user.uid),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.assessment),
+            tooltip: 'My Modules',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MyModulesScreen(studentUid: widget.user.uid),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
             onPressed: () async {
@@ -710,7 +765,9 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                           boxShadow: _isBroadcasting
                               ? [
                                   BoxShadow(
-                                    color: const Color(0xFF00BCD4).withOpacity(0.5),
+                                    color: const Color(
+                                      0xFF00BCD4,
+                                    ).withOpacity(0.5),
                                     blurRadius: 40,
                                     spreadRadius: 10,
                                   ),
@@ -722,7 +779,9 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                               ? Icons.bluetooth_searching
                               : Icons.bluetooth_disabled,
                           size: 80,
-                          color: _isBroadcasting ? Colors.white : Colors.white54,
+                          color: _isBroadcasting
+                              ? Colors.white
+                              : Colors.white54,
                         ),
                       ),
                     );
@@ -730,20 +789,23 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                 ),
               ),
               const SizedBox(height: 48),
-              
+
               // Registration Number
               if (_regNo != null)
                 Text(
                   _regNo!.toUpperCase(),
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    letterSpacing: 2,
-                  ),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineLarge?.copyWith(letterSpacing: 2),
                 ),
               const SizedBox(height: 12),
-              
+
               // Status Text
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: _isBroadcasting
                       ? const Color(0xFF00BCD4).withOpacity(0.2)
@@ -783,7 +845,7 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                 ),
               ),
               const SizedBox(height: 48),
-              
+
               // Control Button
               SizedBox(
                 width: double.infinity,
@@ -803,13 +865,15 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                     size: 28,
                   ),
                   label: Text(
-                    _isBroadcasting ? 'STOP BROADCASTING' : 'START BROADCASTING',
+                    _isBroadcasting
+                        ? 'STOP BROADCASTING'
+                        : 'START BROADCASTING',
                     style: const TextStyle(fontSize: 16),
                   ),
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Info Card
               Container(
                 padding: const EdgeInsets.all(20),
@@ -821,21 +885,33 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.info_outline, color: Color(0xFF00BCD4)),
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           'How it works',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontSize: 18,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(fontSize: 18),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildInfoRow(Icons.bluetooth, 'Broadcasting via Bluetooth'),
-                    _buildInfoRow(Icons.security, 'Service UUID: $SERVICE_UUID'),
+                    _buildInfoRow(
+                      Icons.bluetooth,
+                      'Broadcasting via Bluetooth',
+                    ),
+                    _buildInfoRow(
+                      Icons.security,
+                      'Service UUID: $SERVICE_UUID',
+                    ),
                     _buildInfoRow(Icons.radar, 'Range: ~10-30 meters'),
-                    _buildInfoRow(Icons.person, 'Attendance auto-marked when detected'),
+                    _buildInfoRow(
+                      Icons.person,
+                      'Attendance auto-marked when detected',
+                    ),
                   ],
                 ),
               ),
@@ -854,10 +930,7 @@ class _BroadcastScreenState extends State<BroadcastScreen>
           Icon(icon, color: Colors.white54, size: 20),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
       ),

@@ -1,0 +1,19 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const studentsRouter = require('./routes/students');
+const modulesRouter = require('./routes/modules');
+const attendanceRouter = require('./routes/attendanceRoutes');
+
+const app = express();
+
+app.use(cors({ origin: 'http://localhost:5173' }));
+app.use(express.json());
+
+app.use('/api', studentsRouter);
+app.use('/api', modulesRouter);
+app.use('/api/attendance', attendanceRouter);
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
