@@ -4,40 +4,52 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore'
 import { db } from '../firebase/firebase'
 
 const modulesCollection = collection(db, 'modules')
 
-export const listenModules = (callback, onError) => {
-  const modulesQuery = query(modulesCollection, orderBy('code'))
+const mapModuleDoc = (moduleDoc) => {
+  const data = moduleDoc.data() || {}
+  return {
+    id: moduleDoc.id,
+    ...data,
+    code: data.code || moduleDoc.id,
+    name: data.name || '',
+    lecturer_id: data.lecturer_id || '',
+    total_sessions: Number(data.total_sessions || 0),
+    session_dates: Array.isArray(data.session_dates) ? data.session_dates : [],
+    enrollment_enabled:
+      typeof data.enrollment_enabled === 'boolean'
+        ? data.enrollment_enabled
+        : true,
+  }
+}
+
+// Only returns modules owned by the given lecturer. A lecturer must never
+// see or act on modules created by someone else.
+export const listenModules = (lecturerId, callback, onError) => {
+  if (!lecturerId) {
+    callback([])
+    return () => {}
+  }
+
+  const modulesQuery = query(
+    modulesCollection,
+    where('lecturer_id', '==', lecturerId)
+  )
 
   return onSnapshot(
     modulesQuery,
     (snapshot) => {
-      const rows = snapshot.docs.map((moduleDoc) => {
-        const data = moduleDoc.data() || {}
-        return {
-          id: moduleDoc.id,
-          ...data,
-          code: data.code || moduleDoc.id,
-          name: data.name || '',
-          lecturer_id: data.lecturer_id || '',
-          total_sessions: Number(data.total_sessions || 0),
-          session_dates: Array.isArray(data.session_dates)
-            ? data.session_dates
-            : [],
-          enrollment_enabled:
-            typeof data.enrollment_enabled === 'boolean'
-              ? data.enrollment_enabled
-              : true,
-        }
-      })
+      const rows = snapshot.docs
+        .map(mapModuleDoc)
+        .sort((a, b) => a.code.localeCompare(b.code))
 
       callback(rows)
     },
@@ -81,10 +93,18 @@ export const createModule = async ({
   )
 }
 
-export const updateModule = async (code, patch) => {
+export const updateModule = async (code, patch, requesterId) => {
   const trimmedCode = code.trim().toUpperCase()
   if (!trimmedCode) {
     throw new Error('Module code is required.')
+  }
+
+  const existing = await getDoc(doc(db, 'modules', trimmedCode))
+  if (!existing.exists()) {
+    throw new Error('Module not found.')
+  }
+  if (!requesterId || existing.data()?.lecturer_id !== requesterId) {
+    throw new Error('You do not have permission to edit this module.')
   }
 
   const nextPatch = {
@@ -104,16 +124,24 @@ export const updateModule = async (code, patch) => {
   await updateDoc(doc(db, 'modules', trimmedCode), nextPatch)
 }
 
-export const deleteModule = async (code) => {
+export const deleteModule = async (code, requesterId) => {
   const trimmedCode = code.trim().toUpperCase()
   if (!trimmedCode) {
     throw new Error('Module code is required.')
   }
 
+  const existing = await getDoc(doc(db, 'modules', trimmedCode))
+  if (!existing.exists()) {
+    throw new Error('Module not found.')
+  }
+  if (!requesterId || existing.data()?.lecturer_id !== requesterId) {
+    throw new Error('You do not have permission to delete this module.')
+  }
+
   await deleteDoc(doc(db, 'modules', trimmedCode))
 }
 
-export const getModuleById = async (moduleId) => {
+export const getModuleById = async (moduleId, requesterId) => {
   const trimmedCode = moduleId.trim().toUpperCase()
   if (!trimmedCode) {
     throw new Error('Module code is required.')
@@ -124,18 +152,11 @@ export const getModuleById = async (moduleId) => {
     return null
   }
 
-  const data = snapshot.data() || {}
-  return {
-    id: snapshot.id,
-    ...data,
-    code: data.code || snapshot.id,
-    name: data.name || '',
-    lecturer_id: data.lecturer_id || '',
-    total_sessions: Number(data.total_sessions || 0),
-    session_dates: Array.isArray(data.session_dates) ? data.session_dates : [],
-    enrollment_enabled:
-      typeof data.enrollment_enabled === 'boolean'
-        ? data.enrollment_enabled
-        : true,
+  const moduleData = mapModuleDoc(snapshot)
+
+  if (!requesterId || moduleData.lecturer_id !== requesterId) {
+    return null
   }
+
+  return moduleData
 }

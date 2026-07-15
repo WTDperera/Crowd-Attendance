@@ -1,4 +1,4 @@
-function ModuleCard({ module, onOpen, onEdit, onDelete }) {
+function ModuleCard({ module, lecturerName, onOpen, onEdit, onDelete }) {
   const handleOpen = () => {
     if (onOpen) {
       onOpen(module)
@@ -38,7 +38,7 @@ function ModuleCard({ module, onOpen, onEdit, onDelete }) {
       <div className="module-meta">
         <p>
           Lecturer
-          <strong>{module.lecturer_id || '—'}</strong>
+          <strong>{lecturerName || module.lecturer_id || '—'}</strong>
         </p>
         <p>
           Sessions

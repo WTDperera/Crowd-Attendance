@@ -7,17 +7,13 @@ import { AuthProvider } from './context/AuthContext.jsx'
 import { ModulesProvider } from './context/ModulesContext.jsx'
 import { StudentsProvider } from './context/StudentsContext.jsx'
 import AddStudent from './pages/AddStudent.jsx'
-import AddModule from './pages/AddModule.jsx'
 import AddSession from './pages/AddSession.jsx'
 import EditStudent from './pages/EditStudent.jsx'
-import EditModule from './pages/EditModule.jsx'
 import EditSession from './pages/EditSession.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import ModuleDetailsPage from './pages/ModuleDetailsPage.jsx'
-import DashboardHome from './pages/DashboardHome.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import ModulesPage from './pages/ModulesPage.jsx'
-import RegisterPage from './pages/RegisterPage.jsx'
 import SettingsPage from './pages/SettingsPage.jsx'
 import StudentsList from './pages/StudentsList.jsx'
 import ForgotPassword from './pages/ForgotPasswordPage.jsx'
@@ -28,18 +24,14 @@ function App() {
       <StudentsProvider>
         <ModulesProvider>
           <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/" element={<LoginPage />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
 
             <Route element={<ProtectedRoute />}>
               <Route element={<DashboardLayout />}>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
                 <Route path="/dashboard" element={<DashboardPage />} />
                 <Route path="/modules" element={<ModulesPage />} />
-                <Route path="/modules/new" element={<AddModule />} />
                 <Route path="/modules/:moduleId" element={<ModuleDetailsPage />} />
-                <Route path="/modules/:id/edit" element={<EditModule />} />
                 <Route
                   path="/modules/:id/sessions/new"
                   element={<AddSession />}

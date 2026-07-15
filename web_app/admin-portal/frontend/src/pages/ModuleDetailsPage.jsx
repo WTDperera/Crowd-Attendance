@@ -4,10 +4,13 @@ import { getModuleById } from '../services/moduleService'
 import { getStudentsEnrolledInModule } from '../services/studentService'
 import { downloadAttendanceExcel } from '../services/attendanceExportService'
 import AttendanceExportModal from '../components/AttendanceExportModal'
+import { useAuth } from '../context/AuthContext.jsx'
 
 function ModuleDetailsPage() {
   const { moduleId } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const lecturerId = user?.uid || ''
   const [moduleData, setModuleData] = useState(null)
   const [students, setStudents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -41,7 +44,7 @@ function ModuleDetailsPage() {
       setErrorMessage('')
 
       try {
-        const response = await getModuleById(moduleKey)
+        const response = await getModuleById(moduleKey, lecturerId)
 
         if (isMounted) {
           setModuleData(response)
@@ -83,7 +86,7 @@ function ModuleDetailsPage() {
         unsubscribeStudents()
       }
     }
-  }, [moduleKey])
+  }, [moduleKey, lecturerId])
 
   const filteredStudents = useMemo(() => {
     const query = search.trim().toLowerCase()

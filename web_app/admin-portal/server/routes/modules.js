@@ -1,5 +1,6 @@
 const express = require('express');
 const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
+const { requireLecturer } = verifyFirebaseToken;
 const { db } = require('../firebaseAdmin');
 
 const router = express.Router();
@@ -85,7 +86,8 @@ const fetchStudentRecords = async (collectionName, moduleId, uid, studentFields,
   return records;
 };
 
-router.get('/modules', verifyFirebaseToken, async (req, res) => {
+router.get('/modules', verifyFirebaseToken,
+  requireLecturer, async (req, res) => {
   try {
     const snapshot = await db.collection('modules').get();
     const modules = snapshot.docs.map((doc) => normalizeModule(doc));
@@ -101,6 +103,7 @@ router.get('/modules', verifyFirebaseToken, async (req, res) => {
 router.get(
   '/modules/:moduleId/attendance-summary',
   verifyFirebaseToken,
+  requireLecturer,
   async (req, res) => {
     const { moduleId } = req.params;
 
@@ -175,6 +178,7 @@ router.get(
 router.get(
   '/modules/:moduleId/students/:uid/attendance-details',
   verifyFirebaseToken,
+  requireLecturer,
   async (req, res) => {
     const { moduleId, uid } = req.params;
 

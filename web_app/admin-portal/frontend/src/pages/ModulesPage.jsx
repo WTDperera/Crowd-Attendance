@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ModuleCard from '../components/ModuleCard.jsx'
 import ModuleFormModal from '../components/ModuleFormModal.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 import {
   createModule,
   deleteModule,
@@ -11,6 +12,9 @@ import {
 
 function ModulesPage() {
   const navigate = useNavigate()
+  const { user, lecturerProfile } = useAuth()
+  const lecturerId = user?.uid || ''
+  const lecturerName = lecturerProfile?.fullName || ''
   const [modules, setModules] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
@@ -23,6 +27,7 @@ function ModulesPage() {
     setIsLoading(true)
 
     const unsubscribe = listenModules(
+      lecturerId,
       (rows) => {
         setModules(rows)
         setErrorMessage('')
@@ -36,7 +41,7 @@ function ModulesPage() {
     )
 
     return () => unsubscribe()
-  }, [])
+  }, [lecturerId])
 
   const filteredModules = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -68,11 +73,16 @@ function ModulesPage() {
   }
 
   const handleCreate = async (payload) => {
+    if (!lecturerId) {
+      window.alert('You must be signed in to create a module.')
+      return
+    }
+
     setIsSaving(true)
     setErrorMessage('')
 
     try {
-      await createModule(payload)
+      await createModule({ ...payload, lecturer_id: lecturerId })
       window.alert('Module created successfully.')
       closeModal()
     } catch (error) {
@@ -92,7 +102,7 @@ function ModulesPage() {
     setErrorMessage('')
 
     try {
-      await updateModule(selectedModule.code || selectedModule.id, payload)
+      await updateModule(selectedModule.code || selectedModule.id, payload, lecturerId)
       window.alert('Module updated successfully.')
       closeModal()
     } catch (error) {
@@ -126,7 +136,7 @@ function ModulesPage() {
     setErrorMessage('')
 
     try {
-      await deleteModule(code)
+      await deleteModule(code, lecturerId)
       window.alert('Module deleted successfully.')
     } catch (error) {
       setErrorMessage(error.message)
@@ -191,6 +201,8 @@ function ModulesPage() {
       <ModuleFormModal
         isOpen={activeModal === 'create'}
         mode="create"
+        lecturerId={lecturerId}
+        lecturerName={lecturerName}
         onClose={closeModal}
         onSubmit={handleCreate}
         isSubmitting={isSaving}
@@ -199,6 +211,8 @@ function ModulesPage() {
         isOpen={activeModal === 'edit'}
         mode="edit"
         initialValues={selectedModule}
+        lecturerId={selectedModule?.lecturer_id || lecturerId}
+        lecturerName={lecturerName}
         onClose={closeModal}
         onSubmit={handleUpdate}
         isSubmitting={isSaving}

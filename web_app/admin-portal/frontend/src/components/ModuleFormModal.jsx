@@ -4,7 +4,6 @@ import { sha256 } from '../utils/hash'
 const buildInitialState = (initialValues) => ({
   code: initialValues?.code || '',
   name: initialValues?.name || '',
-  lecturer_id: initialValues?.lecturer_id || '',
   enrollment_enabled:
     typeof initialValues?.enrollment_enabled === 'boolean'
       ? initialValues.enrollment_enabled
@@ -17,6 +16,8 @@ function ModuleFormModal({
   isOpen,
   mode,
   initialValues,
+  lecturerId,
+  lecturerName,
   onClose,
   onSubmit,
   isSubmitting = false,
@@ -52,8 +53,8 @@ function ModuleFormModal({
       nextErrors.name = 'Module name is required.'
     }
 
-    if (!formData.lecturer_id.trim()) {
-      nextErrors.lecturer_id = 'Lecturer ID is required.'
+    if (!lecturerId) {
+      nextErrors.lecturer_id = 'You must be signed in to create a module.'
     }
 
     const hasPassword = formData.enrollment_password.trim().length > 0
@@ -88,10 +89,10 @@ function ModuleFormModal({
     return (
       formData.code &&
       formData.name &&
-      formData.lecturer_id &&
+      Boolean(lecturerId) &&
       !isSubmitting
     )
-  }, [formData, isSubmitting])
+  }, [formData, lecturerId, isSubmitting])
 
   const handleChange = (event) => {
     const { name, value, type, checked } = event.target
@@ -117,7 +118,7 @@ function ModuleFormModal({
     const payload = {
       code: normalizeCode(formData.code),
       name: formData.name.trim(),
-      lecturer_id: formData.lecturer_id.trim(),
+      lecturer_id: lecturerId,
       enrollment_enabled: Boolean(formData.enrollment_enabled),
     }
 
@@ -186,15 +187,19 @@ function ModuleFormModal({
           </div>
 
           <div className="field-group">
-            <label htmlFor="lecturerId">Lecturer ID</label>
+            <label htmlFor="lecturerId">Lecturer</label>
             <input
               id="lecturerId"
               type="text"
-              name="lecturer_id"
-              placeholder="uid_123"
-              value={formData.lecturer_id}
-              onChange={handleChange}
+              value={
+                lecturerName || (lecturerId ? 'Unnamed lecturer' : 'Not signed in')
+              }
+              readOnly
+              disabled
             />
+            <span className="helper-text">
+              Automatically set to your signed-in account.
+            </span>
             {errors.lecturer_id && (
               <span className="field-error">{errors.lecturer_id}</span>
             )}

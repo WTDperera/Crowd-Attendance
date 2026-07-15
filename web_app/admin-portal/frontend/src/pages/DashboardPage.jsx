@@ -4,7 +4,6 @@ import {
   getActiveSessionsCount,
   getEnrollmentEnabledModulesCount,
   getStudentCountPerModule,
-  getTotalLecturersCount,
   getTotalModulesCount,
 } from '../services/dashboardService'
 
@@ -121,7 +120,7 @@ function DashboardPage() {
         const [modules, lecturers, sessions, enabledModules] =
           await Promise.all([
             getTotalModulesCount(),
-            getTotalLecturersCount(),
+        
             getActiveSessionsCount(),
             getEnrollmentEnabledModulesCount(),
           ])

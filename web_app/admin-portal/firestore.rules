@@ -1,0 +1,101 @@
+rules_version = '2';
+
+// NOTE: This Firestore database is shared by three clients: the web
+// admin-portal, lecturer_app, and student_app. These rules were written
+// by cross-checking actual read/write patterns in all three, not just
+// the web admin-portal, so deploying this should not break the Flutter
+// apps. Re-check this file if new collections or write patterns are
+// added to either mobile app.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(existingLecturerId) {
+      return isSignedIn() && request.auth.uid == existingLecturerId;
+    }
+
+    function isLecturer() {
+      return isSignedIn()
+             && exists(/databases/$(database)/documents/lecturers/$(request.auth.uid));
+    }
+
+    // ---------------------------------------------------------------
+    // modules/{moduleCode}
+    // A lecturer may only read, edit, or delete modules they created.
+    // On create, the incoming lecturer_id must match the caller's uid,
+    // so a lecturer can never assign a module to someone else or read
+    // another lecturer's module.
+    // ---------------------------------------------------------------
+    match /modules/{moduleCode} {
+      allow read: if isOwner(resource.data.lecturer_id);
+      allow create: if isSignedIn()
+                    && request.resource.data.lecturer_id == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.lecturer_id);
+    }
+
+    // ---------------------------------------------------------------
+    // lecturers/{uid}
+    // A lecturer may only read/write their own profile document.
+    // (isLecturer() above also relies on this doc existing.)
+    // ---------------------------------------------------------------
+    match /lecturers/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+    }
+
+    // ---------------------------------------------------------------
+    // active_sessions/{sessionId}
+    // Created/managed by lecturer_app; each doc carries lecturer_id.
+    // A lecturer may only read/manage sessions they started.
+    // ---------------------------------------------------------------
+    match /active_sessions/{sessionId} {
+      allow read: if isOwner(resource.data.lecturer_id);
+      allow create: if isSignedIn()
+                    && request.resource.data.lecturer_id == request.auth.uid;
+      allow update, delete: if isOwner(resource.data.lecturer_id);
+    }
+
+    // ---------------------------------------------------------------
+    // attendance_records/{recordId}
+    // Written by lecturer_app when a student is detected in a session.
+    // Records only carry session_id (not lecturer_id directly), so
+    // ownership is checked by looking up the parent session.
+    // Records are treated as immutable once created.
+    // ---------------------------------------------------------------
+    match /attendance_records/{recordId} {
+      allow read: if isSignedIn()
+                  && get(/databases/$(database)/documents/active_sessions/$(resource.data.session_id)).data.lecturer_id == request.auth.uid;
+      allow create: if isSignedIn()
+                    && get(/databases/$(database)/documents/active_sessions/$(request.resource.data.session_id)).data.lecturer_id == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // students/{uid}
+    // - A student may read/write their own document (device
+    //   registration, last_login, etc. — student_app does this).
+    // - Any signed-in lecturer may read/write student documents, since
+    //   lecturer_app currently updates attendance/absence counts for
+    //   any student it detects, without per-module ownership checks.
+    //
+    // LIMITATION: this does not yet restrict a lecturer to only the
+    // students enrolled in modules *they* own — any lecturer can still
+    // read or edit any student's record. Closing that gap requires
+    // either denormalizing module ownership onto enrollment data or
+    // moving these writes through a backend endpoint that enforces it
+    // server-side. Flagged here as recommended follow-up work.
+    // ---------------------------------------------------------------
+    match /students/{studentId} {
+      allow read, write: if isSignedIn()
+                         && (request.auth.uid == studentId || isLecturer());
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

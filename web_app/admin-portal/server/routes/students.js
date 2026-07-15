@@ -1,11 +1,13 @@
 const express = require('express');
 const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
+const { requireLecturer } = verifyFirebaseToken;
 const { admin, auth, db } = require('../firebaseAdmin');
 
 const router = express.Router();
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-router.get('/students', verifyFirebaseToken, async (req, res) => {
+router.get('/students', verifyFirebaseToken,
+  requireLecturer, async (req, res) => {
   try {
     const snapshot = await db.collection('students').get();
     const students = snapshot.docs.map((doc) => ({
@@ -19,7 +21,8 @@ router.get('/students', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-router.post('/students', verifyFirebaseToken, async (req, res) => {
+router.post('/students', verifyFirebaseToken,
+  requireLecturer, async (req, res) => {
   const { email, password, reg_no } = req.body;
 
   if (!email || !password || !reg_no) {
@@ -67,7 +70,8 @@ router.post('/students', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-router.patch('/students/:uid', verifyFirebaseToken, async (req, res) => {
+router.patch('/students/:uid', verifyFirebaseToken,
+  requireLecturer, async (req, res) => {
   const { uid } = req.params;
   const { reg_no, email } = req.body;
 
@@ -128,7 +132,8 @@ router.patch('/students/:uid', verifyFirebaseToken, async (req, res) => {
   }
 });
 
-router.delete('/students/:uid', verifyFirebaseToken, async (req, res) => {
+router.delete('/students/:uid', verifyFirebaseToken,
+  requireLecturer, async (req, res) => {
   const { uid } = req.params;
 
   try {

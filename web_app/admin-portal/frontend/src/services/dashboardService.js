@@ -23,16 +23,18 @@ const getCountForModule = (student, prefix, moduleId) => {
   return 0
 }
 
-export const getStudentCountPerModule = async () => {
-  const modulesRef = collection(db, 'modules')
-  const studentsRef = collection(db, 'students')
+const getOwnModules = async (lecturerId) => {
+  if (!lecturerId) {
+    return []
+  }
 
-  const [modulesSnapshot, studentsSnapshot] = await Promise.all([
-    getDocs(modulesRef),
-    getDocs(studentsRef),
-  ])
+  const modulesQuery = query(
+    collection(db, 'modules'),
+    where('lecturer_id', '==', lecturerId)
+  )
+  const snapshot = await getDocs(modulesQuery)
 
-  const modules = modulesSnapshot.docs
+  return snapshot.docs
     .map((moduleDoc) => {
       const data = moduleDoc.data() || {}
       const moduleId = normalizeModuleId(data.code || moduleDoc.id)
@@ -43,9 +45,17 @@ export const getStudentCountPerModule = async () => {
       return {
         moduleId,
         moduleName: data.name || '',
+        enrollment_enabled: Boolean(data.enrollment_enabled),
       }
     })
     .filter(Boolean)
+}
+
+export const getStudentCountPerModule = async (lecturerId) => {
+  const [modules, studentsSnapshot] = await Promise.all([
+    getOwnModules(lecturerId),
+    getDocs(collection(db, 'students')),
+  ])
 
   const moduleCounts = new Map()
   modules.forEach((module) => {
@@ -82,57 +92,65 @@ export const getStudentCountPerModule = async () => {
     })
 }
 
-export const getTotalModulesCount = async () => {
-  const snapshot = await getDocs(collection(db, 'modules'))
-  return snapshot.size
+export const getTotalModulesCount = async (lecturerId) => {
+  const modules = await getOwnModules(lecturerId)
+  return modules.length
 }
 
-export const getTotalLecturersCount = async () => {
-  const snapshot = await getDocs(collection(db, 'lecturers'))
-  return snapshot.size
+// Distinct students enrolled in any module owned by this lecturer.
+export const getTotalStudentsCount = async (lecturerId) => {
+  const modules = await getOwnModules(lecturerId)
+  const ownModuleIds = new Set(modules.map((module) => module.moduleId))
+
+  if (ownModuleIds.size === 0) {
+    return 0
+  }
+
+  const studentsSnapshot = await getDocs(collection(db, 'students'))
+  let count = 0
+
+  studentsSnapshot.docs.forEach((studentDoc) => {
+    const data = studentDoc.data() || {}
+    const enrolledModuleIds = Array.isArray(data.enrolled_module_ids)
+      ? data.enrolled_module_ids
+      : []
+
+    const isEnrolledInOwnModule = enrolledModuleIds.some((moduleId) =>
+      ownModuleIds.has(normalizeModuleId(moduleId))
+    )
+
+    if (isEnrolledInOwnModule) {
+      count += 1
+    }
+  })
+
+  return count
 }
 
-export const getActiveSessionsCount = async () => {
+export const getActiveSessionsCount = async (lecturerId) => {
+  if (!lecturerId) {
+    return 0
+  }
+
   const sessionsQuery = query(
     collection(db, 'active_sessions'),
+    where('lecturer_id', '==', lecturerId),
     where('status', '==', 'active')
   )
   const snapshot = await getDocs(sessionsQuery)
   return snapshot.size
 }
 
-export const getEnrollmentEnabledModulesCount = async () => {
-  const modulesQuery = query(
-    collection(db, 'modules'),
-    where('enrollment_enabled', '==', true)
-  )
-  const snapshot = await getDocs(modulesQuery)
-  return snapshot.size
+export const getEnrollmentEnabledModulesCount = async (lecturerId) => {
+  const modules = await getOwnModules(lecturerId)
+  return modules.filter((module) => module.enrollment_enabled).length
 }
 
-export const getAttendancePerformancePerModule = async () => {
-  const modulesRef = collection(db, 'modules')
-  const studentsRef = collection(db, 'students')
-
-  const [modulesSnapshot, studentsSnapshot] = await Promise.all([
-    getDocs(modulesRef),
-    getDocs(studentsRef),
+export const getAttendancePerformancePerModule = async (lecturerId) => {
+  const [modules, studentsSnapshot] = await Promise.all([
+    getOwnModules(lecturerId),
+    getDocs(collection(db, 'students')),
   ])
-
-  const modules = modulesSnapshot.docs
-    .map((moduleDoc) => {
-      const data = moduleDoc.data() || {}
-      const moduleId = normalizeModuleId(data.code || moduleDoc.id)
-      if (!moduleId) {
-        return null
-      }
-
-      return {
-        moduleId,
-        moduleName: data.name || '',
-      }
-    })
-    .filter(Boolean)
 
   const moduleTotals = new Map()
   modules.forEach((module) => {

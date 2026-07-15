@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { signInWithEmailAndPassword } from 'firebase/auth'
+import { signInWithCustomToken } from 'firebase/auth'
 import AuthLayout from '../components/AuthLayout.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { auth } from '../firebase/firebase'
+import { loginWithBackend } from '../services/authService'
 
 
 
@@ -11,7 +12,8 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function LoginPage() {
   const navigate = useNavigate()
-  const { user, authLoading } = useAuth()
+  const { user, authLoading, accessDeniedMessage, clearAccessDeniedMessage } =
+    useAuth()
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -27,6 +29,9 @@ function LoginPage() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }))
+    if (accessDeniedMessage) {
+      clearAccessDeniedMessage()
+    }
   }
 
   const validate = () => {
@@ -62,19 +67,21 @@ function LoginPage() {
     }
 
     try {
-      await signInWithEmailAndPassword(auth, formData.email, formData.password)
-      navigate('/dashboard')
+      // The backend verifies the email/password AND checks that this
+      // account has a lecturer profile before returning anything. A
+      // non-lecturer gets a 401/403 here and never receives a token, so
+      // no Firebase Auth session is ever created for them on the client.
+      const { token } = await loginWithBackend(
+        formData.email,
+        formData.password
+      )
+      await signInWithCustomToken(auth, token)
+      // Don't navigate here — AuthContext still re-verifies the lecturer
+      // profile via Firestore as a second, independent check. The
+      // useEffect below navigates once that resolves successfully.
     } catch (error) {
-      const errorCode = error?.code
-      const friendlyMessageMap = {
-        'auth/user-not-found': 'No account found for this email.',
-        'auth/wrong-password': 'Incorrect password.',
-        'auth/invalid-email': 'Invalid email address.',
-        'auth/too-many-requests': 'Too many attempts. Try again later.',
-      }
       setFormError(
-        friendlyMessageMap[errorCode] ||
-          'Unable to sign in right now. Please try again.'
+        error?.message || 'Unable to sign in right now. Please try again.'
       )
     }
   }
@@ -146,17 +153,13 @@ function LoginPage() {
         </div>
 
         {formError && <span className="field-error">{formError}</span>}
+        {accessDeniedMessage && (
+          <span className="field-error">{accessDeniedMessage}</span>
+        )}
         <button className="primary-button" type="submit" disabled={!canSubmit}>
           Sign in
         </button>
       </form>
-
-      <p className="auth-footer">
-        Don&apos;t have an admin account?{' '}
-        <Link className="text-link" to="/register">
-          Register
-        </Link>
-      </p>
     </AuthLayout>
   )
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
+const { requireLecturer } = verifyFirebaseToken;
 const { db } = require('../firebaseAdmin');
 
 const router = express.Router();
@@ -72,7 +73,8 @@ router.get('/test', (req, res) => {
 });
 
 // Export route - expects query params: moduleId, optional startDate, endDate
-router.get('/export', verifyFirebaseToken, async (req, res) => {
+router.get('/export', verifyFirebaseToken,
+  requireLecturer, async (req, res) => {
   const { moduleId, startDate, endDate } = req.query;
 
   try {
