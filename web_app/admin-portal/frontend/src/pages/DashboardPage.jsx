@@ -1,112 +1,78 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 import {
   getAttendancePerformancePerModule,
   getActiveSessionsCount,
   getEnrollmentEnabledModulesCount,
   getStudentCountPerModule,
+  getTotalStudentsCount,
   getTotalModulesCount,
 } from '../services/dashboardService'
+import { useAuth } from '../context/AuthContext.jsx'
 
-const ENROLLMENT_COLORS = [
-  '#4F46E5',
-  '#10B981',
-  '#F59E0B',
-  '#EF4444',
-  '#06B6D4',
-  '#8B5CF6',
-  '#EC4899',
-  '#22C55E',
+const STAT_CARDS = [
+  { key: 'totalModules', label: 'All Modules', icon: '📚', accent: '#4f46e5' },
+  { key: 'totalStudents', label: 'All Students', icon: '🎓', accent: '#0d9488' },
+  { key: 'activeSessions', label: 'Active Sessions', icon: '🟢', accent: '#16a34a' },
+  {
+    key: 'enrollmentEnabled',
+    label: 'Enrollment Enabled',
+    icon: '🔐',
+    accent: '#d97706',
+  },
 ]
 
-const getColorForModule = (moduleId) => {
-  let hash = 0
-  for (let index = 0; index < moduleId.length; index += 1) {
-    hash = (hash * 31 + moduleId.charCodeAt(index)) % 1000
-  }
+const ENROLLMENT_COLOR = '#4f46e5'
 
-  return ENROLLMENT_COLORS[hash % ENROLLMENT_COLORS.length]
+const getAttendanceColor = (value) => {
+  if (value >= 80) return '#16a34a'
+  if (value >= 50) return '#d97706'
+  return '#dc2626'
 }
 
-const EnrollmentFixedBars = ({ rows }) => {
-  const maxCount = Math.max(...rows.map((row) => row.count), 0)
+function ChartTooltip({ active, payload, label, valueLabel }) {
+  if (!active || !payload || !payload.length) {
+    return null
+  }
+
+  const row = payload[0].payload
 
   return (
-    <div style={{ display: 'grid', gap: '14px' }}>
-      {rows.map((row) => {
-        const fillPercent = maxCount === 0 ? 0 : (row.count / maxCount) * 100
-        const color = getColorForModule(row.moduleId)
-
-        return (
-          <div
-            key={row.moduleId}
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '120px minmax(140px, 1fr) auto',
-              gap: '14px',
-              alignItems: 'center',
-            }}
-          >
-            <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, fontWeight: 700 }}>{row.moduleId}</p>
-              {row.moduleName ? (
-                <p
-                  style={{
-                    margin: '4px 0 0',
-                    fontSize: '0.8rem',
-                    color: '#64748b',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                  title={row.moduleName}
-                >
-                  {row.moduleName}
-                </p>
-              ) : null}
-            </div>
-            <div
-              style={{
-                width: '220px',
-                height: '14px',
-                borderRadius: '999px',
-                background: '#e5e7eb',
-                overflow: 'hidden',
-              }}
-              aria-hidden="true"
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${fillPercent}%`,
-                  borderRadius: '999px',
-                  background: color,
-                }}
-              />
-            </div>
-            <div style={{ textAlign: 'right', minWidth: '90px' }}>
-              <span style={{ fontWeight: 700 }}>{row.count}</span>
-              <span style={{ marginLeft: '6px', color: '#64748b' }}>
-                {`${Math.round(fillPercent)}%`}
-              </span>
-            </div>
-          </div>
-        )
-      })}
+    <div className="chart-tooltip">
+      <p className="chart-tooltip-title">{label}</p>
+      {row.moduleName && <p className="chart-tooltip-sub">{row.moduleName}</p>}
+      <p className="chart-tooltip-value">
+        {valueLabel}: <strong>{row.percentage}%</strong>
+      </p>
     </div>
   )
 }
 
 function DashboardPage() {
+  const { user } = useAuth()
+  const lecturerId = user?.uid || ''
+
   const [overview, setOverview] = useState({
     totalModules: 0,
-    totalLecturers: 0,
+    totalStudents: 0,
     activeSessions: 0,
     enrollmentEnabled: 0,
   })
   const [isOverviewLoading, setIsOverviewLoading] = useState(true)
-  const [rows, setRows] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState('')
+
+  const [enrollmentRows, setEnrollmentRows] = useState([])
+  const [isEnrollmentLoading, setIsEnrollmentLoading] = useState(true)
+  const [enrollmentError, setEnrollmentError] = useState('')
+
   const [attendanceRows, setAttendanceRows] = useState([])
   const [isAttendanceLoading, setIsAttendanceLoading] = useState(true)
   const [attendanceError, setAttendanceError] = useState('')
@@ -117,12 +83,12 @@ function DashboardPage() {
     const loadOverview = async () => {
       try {
         setIsOverviewLoading(true)
-        const [modules, lecturers, sessions, enabledModules] =
+        const [modules, students, sessions, enabledModules] =
           await Promise.all([
-            getTotalModulesCount(),
-        
-            getActiveSessionsCount(),
-            getEnrollmentEnabledModulesCount(),
+            getTotalModulesCount(lecturerId),
+            getTotalStudentsCount(lecturerId),
+            getActiveSessionsCount(lecturerId),
+            getEnrollmentEnabledModulesCount(lecturerId),
           ])
 
         if (!isMounted) {
@@ -131,7 +97,7 @@ function DashboardPage() {
 
         setOverview({
           totalModules: modules,
-          totalLecturers: lecturers,
+          totalStudents: students,
           activeSessions: sessions,
           enrollmentEnabled: enabledModules,
         })
@@ -139,10 +105,10 @@ function DashboardPage() {
         if (!isMounted) {
           return
         }
-        console.log('Unable to load system overview.', err)
+        console.log('Unable to load overview.', err)
         setOverview({
           totalModules: 0,
-          totalLecturers: 0,
+          totalStudents: 0,
           activeSessions: 0,
           enrollmentEnabled: 0,
         })
@@ -155,22 +121,22 @@ function DashboardPage() {
 
     const loadEnrollment = async () => {
       try {
-        setIsLoading(true)
-        const data = await getStudentCountPerModule()
+        setIsEnrollmentLoading(true)
+        const data = await getStudentCountPerModule(lecturerId)
         if (!isMounted) {
           return
         }
-        setRows(data)
-        setError('')
+        setEnrollmentRows(data)
+        setEnrollmentError('')
       } catch (err) {
         if (!isMounted) {
           return
         }
-        setRows([])
-        setError(err?.message || 'Unable to load enrollment data.')
+        setEnrollmentRows([])
+        setEnrollmentError(err?.message || 'Unable to load enrollment data.')
       } finally {
         if (isMounted) {
-          setIsLoading(false)
+          setIsEnrollmentLoading(false)
         }
       }
     }
@@ -178,7 +144,7 @@ function DashboardPage() {
     const loadAttendance = async () => {
       try {
         setIsAttendanceLoading(true)
-        const data = await getAttendancePerformancePerModule()
+        const data = await getAttendancePerformancePerModule(lecturerId)
         if (!isMounted) {
           return
         }
@@ -204,86 +170,116 @@ function DashboardPage() {
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [lecturerId])
 
-  const hasRows = rows.length > 0
+  const hasEnrollmentRows = enrollmentRows.length > 0
   const hasAttendanceRows = attendanceRows.length > 0
-
-  const getAttendanceColor = (value) => {
-    if (value >= 80) {
-      return '#22c55e'
-    }
-    if (value >= 50) {
-      return '#f59e0b'
-    }
-    return '#ef4444'
-  }
 
   return (
     <div className="dashboard-grid">
       <section className="card">
         <div className="card-header row">
           <div>
-            <h4>System Overview</h4>
-            <span className="helper-text">Snapshot of core admin metrics.</span>
-          </div>
-        </div>
-        <div className="summary-grid">
-          <div className="summary-card">
-            <p>📚 Total Modules</p>
-            <h3>{isOverviewLoading ? 'Loading...' : overview.totalModules}</h3>
-          </div>
-          <div className="summary-card">
-            <p>👨‍🏫 Total Lecturers</p>
-            <h3>
-              {isOverviewLoading ? 'Loading...' : overview.totalLecturers}
-            </h3>
-          </div>
-          <div className="summary-card">
-            <p>🟢 Active Sessions</p>
-            <h3>{isOverviewLoading ? 'Loading...' : overview.activeSessions}</h3>
-          </div>
-          <div className="summary-card">
-            <p>🔐 Enrollment Enabled</p>
-            <h3>
-              {isOverviewLoading ? 'Loading...' : overview.enrollmentEnabled}
-            </h3>
-          </div>
-        </div>
-      </section>
-      <section className="card">
-        <div className="card-header row">
-          <div>
-            <h4>Student Enrollment per Module</h4>
+            <span className="eyebrow">Overview</span>
+            <h4>Overview</h4>
             <span className="helper-text">
-              Total number of students enrolled in each module.
+              Snapshot of your modules and sessions.
             </span>
           </div>
         </div>
 
-        {isLoading && (
+        <div className="summary-grid">
+          {STAT_CARDS.map((stat) => (
+            <div className="stat-card" key={stat.key}>
+              <div
+                className="stat-icon"
+                style={{ background: `${stat.accent}1a`, color: stat.accent }}
+              >
+                <span aria-hidden="true">{stat.icon}</span>
+              </div>
+              <div>
+                <p className="stat-label">{stat.label}</p>
+                <h3 className="stat-value">
+                  {isOverviewLoading ? '—' : overview[stat.key]}
+                </h3>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="card chart-card">
+        <div className="card-header row">
+          <div>
+            <span className="eyebrow">Enrollment</span>
+            <h4>Student Enrollment per Module</h4>
+            <span className="helper-text">
+              Share of your total students enrolled in each module.
+            </span>
+          </div>
+        </div>
+
+        {isEnrollmentLoading && (
           <p className="helper-text">Loading enrollment insights...</p>
         )}
 
-        {!isLoading && error && (
-          <span className="status-pill danger">{error}</span>
+        {!isEnrollmentLoading && enrollmentError && (
+          <span className="status-pill danger">{enrollmentError}</span>
         )}
 
-        {!isLoading && !error && !hasRows && (
+        {!isEnrollmentLoading && !enrollmentError && !hasEnrollmentRows && (
           <p className="empty-cell">No module enrollments to display yet.</p>
         )}
 
-        {!isLoading && !error && hasRows && (
-          <EnrollmentFixedBars rows={rows} />
+        {!isEnrollmentLoading && !enrollmentError && hasEnrollmentRows && (
+          <div className="chart-wrap">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart
+                data={enrollmentRows}
+                margin={{ top: 8, right: 8, left: -12, bottom: 8 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#e2e8f0"
+                />
+                <XAxis
+                  dataKey="moduleId"
+                  tick={{ fontSize: 12, fill: '#475569' }}
+                  axisLine={{ stroke: '#e2e8f0' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  tickFormatter={(value) => `${value}%`}
+                  tick={{ fontSize: 12, fill: '#475569' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={44}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(79, 70, 229, 0.06)' }}
+                  content={<ChartTooltip valueLabel="Enrolled" />}
+                />
+                <Bar
+                  dataKey="percentage"
+                  fill={ENROLLMENT_COLOR}
+                  radius={[6, 6, 0, 0]}
+                  maxBarSize={48}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         )}
       </section>
 
-      <section className="card">
+      <section className="card chart-card">
         <div className="card-header row">
           <div>
+            <span className="eyebrow">Attendance</span>
             <h4>Attendance Performance per Module</h4>
             <span className="helper-text">
-              Average attendance percentage per module.
+              Average attendance percentage per module you teach.
             </span>
           </div>
         </div>
@@ -301,59 +297,56 @@ function DashboardPage() {
         )}
 
         {!isAttendanceLoading && !attendanceError && hasAttendanceRows && (
-          <div style={{ display: 'grid', gap: '14px' }}>
-            {attendanceRows.map((row) => (
-              <div
-                key={`${row.moduleId}-attendance`}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '120px minmax(160px, 1fr) auto',
-                  gap: '14px',
-                  alignItems: 'center',
-                }}
+          <div className="chart-wrap">
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart
+                data={attendanceRows}
+                margin={{ top: 8, right: 8, left: -12, bottom: 8 }}
               >
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ margin: 0, fontWeight: 700 }}>{row.moduleId}</p>
-                  {row.moduleName ? (
-                    <p
-                      style={{
-                        margin: '4px 0 0',
-                        fontSize: '0.8rem',
-                        color: '#64748b',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                      title={row.moduleName}
-                    >
-                      {row.moduleName}
-                    </p>
-                  ) : null}
-                </div>
-                <div
-                  style={{
-                    width: '220px',
-                    height: '14px',
-                    borderRadius: '999px',
-                    background: '#e5e7eb',
-                    overflow: 'hidden',
-                  }}
-                  aria-hidden="true"
-                >
-                  <div
-                    style={{
-                      height: '100%',
-                      width: `${row.percentage}%`,
-                      borderRadius: '999px',
-                      background: getAttendanceColor(row.percentage),
-                    }}
-                  />
-                </div>
-                <div style={{ textAlign: 'right', minWidth: '70px' }}>
-                  <span style={{ fontWeight: 700 }}>{row.percentage}%</span>
-                </div>
-              </div>
-            ))}
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#e2e8f0"
+                />
+                <XAxis
+                  dataKey="moduleId"
+                  tick={{ fontSize: 12, fill: '#475569' }}
+                  axisLine={{ stroke: '#e2e8f0' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  tickFormatter={(value) => `${value}%`}
+                  tick={{ fontSize: 12, fill: '#475569' }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={44}
+                />
+                <Tooltip
+                  cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}
+                  content={<ChartTooltip valueLabel="Attendance" />}
+                />
+                <Bar dataKey="percentage" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                  {attendanceRows.map((row) => (
+                    <Cell
+                      key={row.moduleId}
+                      fill={getAttendanceColor(row.percentage)}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="chart-legend">
+              <span>
+                <i style={{ background: '#16a34a' }} /> 75%+
+              </span>
+              <span>
+                <i style={{ background: '#d97706' }} /> 60–75%
+              </span>
+              <span>
+                <i style={{ background: '#dc2626' }} /> Below 50%
+              </span>
+            </div>
           </div>
         )}
       </section>

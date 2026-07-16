@@ -1,4 +1,20 @@
-function ModuleCard({ module, lecturerName, onOpen, onEdit, onDelete }) {
+import {useAuth} from '../context/AuthContext'
+
+function ModuleCard({ 
+  module,  
+  onOpen, 
+  onEdit, 
+  onDelete 
+}) 
+
+{
+  
+  
+  const { user , lecturerProfile } = useAuth()
+
+  const lecturerName = lecturerProfile?.fullName
+
+  
   const handleOpen = () => {
     if (onOpen) {
       onOpen(module)
@@ -38,7 +54,7 @@ function ModuleCard({ module, lecturerName, onOpen, onEdit, onDelete }) {
       <div className="module-meta">
         <p>
           Lecturer
-          <strong>{lecturerName || module.lecturer_id || '—'}</strong>
+          <strong>{lecturerName ||  '—'}</strong>
         </p>
         <p>
           Sessions

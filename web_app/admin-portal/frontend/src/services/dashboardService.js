@@ -62,14 +62,21 @@ export const getStudentCountPerModule = async (lecturerId) => {
     moduleCounts.set(module.moduleId, 0)
   })
 
+  const ownModuleIds = new Set(moduleCounts.keys())
+  let totalDistinctStudents = 0
+
   studentsSnapshot.docs.forEach((studentDoc) => {
     const data = studentDoc.data() || {}
     const enrolledModuleIds = Array.isArray(data.enrolled_module_ids)
       ? data.enrolled_module_ids
       : []
+    const normalizedIds = enrolledModuleIds.map(normalizeModuleId)
 
-    enrolledModuleIds.forEach((moduleId) => {
-      const normalizedId = normalizeModuleId(moduleId)
+    if (normalizedIds.some((id) => ownModuleIds.has(id))) {
+      totalDistinctStudents += 1
+    }
+
+    normalizedIds.forEach((normalizedId) => {
       if (!normalizedId || !moduleCounts.has(normalizedId)) {
         return
       }
@@ -79,14 +86,23 @@ export const getStudentCountPerModule = async (lecturerId) => {
   })
 
   return modules
-    .map((module) => ({
-      moduleId: module.moduleId,
-      moduleName: module.moduleName,
-      count: moduleCounts.get(module.moduleId) || 0,
-    }))
+    .map((module) => {
+      const count = moduleCounts.get(module.moduleId) || 0
+      const percentage =
+        totalDistinctStudents === 0
+          ? 0
+          : Math.round((count / totalDistinctStudents) * 100)
+
+      return {
+        moduleId: module.moduleId,
+        moduleName: module.moduleName,
+        count,
+        percentage,
+      }
+    })
     .sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count
+      if (b.percentage !== a.percentage) {
+        return b.percentage - a.percentage
       }
       return a.moduleId.localeCompare(b.moduleId)
     })
