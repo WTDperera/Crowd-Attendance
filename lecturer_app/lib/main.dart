@@ -1261,17 +1261,46 @@ class _ScannerScreenState extends State<ScannerScreen> {
   int _devicesFound = 0;
   int _scansPerformed = 0;
   final Set<String> _processedRegNosInCurrentScan = {};
+  Set<String>? _enrolledRegNos;
 
   static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
 
   @override
   void initState() {
     super.initState();
+    _fetchEnrolledStudents();
     _hydrateState().then((_) {
       if (_scansPerformed == 0 && !_isScanning) {
         _startScanning();
       }
     });
+  }
+
+  Future<void> _fetchEnrolledStudents() async {
+    try {
+      final moduleKey = widget.module.toUpperCase().trim();
+      final snap = await FirebaseFirestore.instance
+          .collection('students')
+          .where('enrolled_module_ids', arrayContains: moduleKey)
+          .get();
+      
+      final regNos = <String>{};
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        if (data['reg_no'] != null) {
+          regNos.add(data['reg_no'].toString().trim());
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _enrolledRegNos = regNos;
+        });
+      }
+      print("🎓 Fetched ${regNos.length} enrolled students for module $moduleKey");
+    } catch (e) {
+      print("❌ Error fetching enrolled students: $e");
+    }
   }
 
   Future<void> _hydrateState() async {
@@ -1478,7 +1507,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
     String regNo;
     try {
-      regNo = utf8.decode(regNoBytesList).trim();
+      regNo = utf8.decode(regNoBytesList).replaceAll('\x00', '').trim();
       print("✅ Decoded RegNo: $regNo");
     } catch (e) {
       print("❌ Failed to decode manufacturer data: $e");
@@ -1495,6 +1524,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
       print("========================================\n");
       return;
     }
+    
+    // Filter unregistered students
+    if (_enrolledRegNos == null) {
+      print("⏳ Still loading enrolled students list - ignoring scan for now");
+      return;
+    }
+    
+    if (!_enrolledRegNos!.contains(regNo)) {
+      print("⛔ Unregistered student detected - ignoring: $regNo");
+      print("========================================\n");
+      return;
+    }
+    
     _processedRegNosInCurrentScan.add(regNo);
 
     // Validate RegNo format

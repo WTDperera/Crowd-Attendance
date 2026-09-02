@@ -23,6 +23,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   
   bool _isScanning = false;
   Map<String, dynamic> _sessionData = {};
+  Set<String>? _enrolledRegNos;
   Map<String, Map<String, dynamic>> _detectedStudents = {}; // regNo -> data
   StreamSubscription? _sessionStream;
   StreamSubscription? _attendanceStream;
@@ -49,11 +50,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _initializeScanner() async {
     // Listen to session updates
     _sessionStream = _sessionService.getSessionStream(widget.sessionId).listen(
-      (snapshot) {
+      (snapshot) async {
         if (snapshot.exists && mounted) {
+          final data = snapshot.data() as Map<String, dynamic>;
           setState(() {
-            _sessionData = snapshot.data() as Map<String, dynamic>;
+            _sessionData = data;
           });
+          
+          if (_enrolledRegNos == null) {
+            final code = data['module_code'] ?? data['module'] ?? '';
+            if (code.isNotEmpty) {
+              await _fetchEnrolledStudents(code);
+            }
+          }
         }
       },
     );
@@ -75,6 +84,33 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
 
     // Note: removed auto-start scanning. The user must manually start a scan round.
+  }
+
+  Future<void> _fetchEnrolledStudents(String moduleCode) async {
+    try {
+      final moduleKey = moduleCode.toUpperCase().trim();
+      final snap = await _firestore
+          .collection('students')
+          .where('enrolled_module_ids', arrayContains: moduleKey)
+          .get();
+      
+      final regNos = <String>{};
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        if (data['reg_no'] != null) {
+          regNos.add(data['reg_no'].toString().trim());
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _enrolledRegNos = regNos;
+        });
+      }
+      print("🎓 Fetched ${regNos.length} enrolled students for module $moduleKey");
+    } catch (e) {
+      print("❌ Error fetching enrolled students: $e");
+    }
   }
 
   Future<void> _requestPermissions() async {
@@ -222,7 +258,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       String regNo;
       try {
-        regNo = String.fromCharCodes(regNoBytesList);
+        regNo = String.fromCharCodes(regNoBytesList).replaceAll('\x00', '').trim();
       } catch (e) {
         print("❌ Failed to decode manufacturer data: $e");
         print("========================================");
@@ -235,6 +271,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
       // Check if already marked IN THIS ROUND
       if (_scannedInCurrentRound.contains(regNo)) {
         print("⏭️  Already marked in current round - skipping");
+        print("========================================");
+        return;
+      }
+      
+      // Filter unregistered students
+      if (_enrolledRegNos != null && !_enrolledRegNos!.contains(regNo)) {
+        print("⛔ Unregistered student detected - ignoring: $regNo");
         print("========================================");
         return;
       }
