@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io' show Platform;
 import 'dart:convert' show utf8;
+import 'package:intl/intl.dart';
 
 import 'services/session_service.dart';
 import 'services/module_service.dart';
@@ -493,6 +494,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String? _lecturerName;
+  String? _selectedModuleFilter;
 
   @override
   void initState() {
@@ -727,7 +729,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -802,6 +804,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
               ),
+              const SizedBox(height: 32),
+
+              _buildModuleFilter(),
+              const SizedBox(height: 32),
+
+              _buildActiveSessionsList(),
+              const SizedBox(height: 32),
+
+              _buildCompletedSessionsList(),
               const SizedBox(height: 32),
 
               // Info Card
@@ -880,6 +891,348 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  Widget _buildModuleFilter() {
+    return StreamBuilder<List<Module>>(
+      stream: ModuleService().watchModulesForLecturer(widget.user.uid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
+        
+        final modules = snapshot.data!;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Filter by Module', style: TextStyle(color: Colors.white54, fontSize: 14)),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('All'),
+                    selected: _selectedModuleFilter == null,
+                    onSelected: (selected) {
+                      setState(() => _selectedModuleFilter = null);
+                    },
+                    selectedColor: const Color(0xFF00BCD4),
+                    checkmarkColor: Colors.white,
+                    labelStyle: TextStyle(color: _selectedModuleFilter == null ? Colors.white : Colors.white70),
+                    backgroundColor: const Color(0xFF1D1E33),
+                  ),
+                  const SizedBox(width: 8),
+                  ...modules.map((m) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(m.code),
+                      selected: _selectedModuleFilter == m.code,
+                      onSelected: (selected) {
+                        setState(() => _selectedModuleFilter = selected ? m.code : null);
+                      },
+                      selectedColor: const Color(0xFF00BCD4),
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(color: _selectedModuleFilter == m.code ? Colors.white : Colors.white70),
+                      backgroundColor: const Color(0xFF1D1E33),
+                    ),
+                  )).toList(),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+    );
+  }
+
+  Widget _buildActiveSessionsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.play_circle_fill, color: Colors.greenAccent),
+            const SizedBox(width: 8),
+            Text(
+              'Active Sessions',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: SessionService().getActiveSessionsStream(widget.user.uid),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            var docs = snapshot.data?.docs ?? [];
+            if (_selectedModuleFilter != null) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final code = data['module_code'] ?? data['module'] ?? '';
+                return code == _selectedModuleFilter;
+              }).toList();
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                _selectedModuleFilter != null 
+                  ? 'No active sessions for $_selectedModuleFilter.'
+                  : 'No active sessions. Create one to start!', 
+                style: const TextStyle(color: Colors.white54)
+              );
+            }
+
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final data = docs[index].data() as Map<String, dynamic>;
+                final sessionId = docs[index].id;
+                final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
+                final topic = data['session_topic'] ?? data['topic'] ?? '';
+
+                return Card(
+                  color: const Color(0xFF1D1E33),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFF00BCD4), width: 1),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    subtitle: Text(topic, style: const TextStyle(color: Colors.white70)),
+                    trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00BCD4), size: 16),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ScannerScreen(
+                            sessionId: sessionId,
+                            module: moduleCode,
+                            topic: topic,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompletedSessionsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.history, color: Colors.white54),
+            const SizedBox(width: 8),
+            Text(
+              'Past Sessions',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: SessionService().getCompletedSessionsStream(widget.user.uid),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            var docs = snapshot.data?.docs ?? [];
+            if (_selectedModuleFilter != null) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final code = data['module_code'] ?? data['module'] ?? '';
+                return code == _selectedModuleFilter;
+              }).toList();
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                _selectedModuleFilter != null
+                  ? 'No past sessions for $_selectedModuleFilter yet.'
+                  : 'No past sessions yet.', 
+                style: const TextStyle(color: Colors.white54)
+              );
+            }
+
+            final displayDocs = docs.take(2).toList();
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: displayDocs.length,
+                  itemBuilder: (context, index) {
+                    final data = displayDocs[index].data() as Map<String, dynamic>;
+                    return PastSessionCard(data: data);
+                  },
+                ),
+                if (docs.length > 2)
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PastSessionsScreen(
+                              lecturerId: widget.user.uid,
+                              moduleFilter: _selectedModuleFilter,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text('VIEW ALL PAST SESSIONS', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// PAST SESSIONS WIDGETS
+// ============================================================================
+
+class PastSessionCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const PastSessionCard({Key? key, required this.data}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
+    final topic = data['session_topic'] ?? data['topic'] ?? '';
+    final studentCount = data['student_count'] ?? 0;
+    
+    DateTime? date;
+    DateTime? startTime;
+    DateTime? endTime;
+    
+    if (data['created_at'] != null) date = (data['created_at'] as Timestamp).toDate();
+    if (data['started_at'] != null) startTime = (data['started_at'] as Timestamp).toDate();
+    if (data['ended_at'] != null) endTime = (data['ended_at'] as Timestamp).toDate();
+    
+    String dateString = date != null ? DateFormat('MMM dd, yyyy').format(date) : 'Unknown Date';
+    String startTimeString = startTime != null ? DateFormat('hh:mm a').format(startTime) : '--';
+    String endTimeString = endTime != null ? DateFormat('hh:mm a').format(endTime) : '--';
+
+    return Card(
+      color: const Color(0xFF1D1E33),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (topic.isNotEmpty) ...[
+              Text(topic, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+            ] else ...[
+              const SizedBox(height: 4),
+            ],
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 12, color: Colors.white54),
+                const SizedBox(width: 4),
+                Text(dateString, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                const SizedBox(width: 12),
+                const Icon(Icons.access_time, size: 12, color: Colors.white54),
+                const SizedBox(width: 4),
+                Text('$startTimeString - $endTimeString', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
+            ),
+          ],
+        ),
+        trailing: Text('$studentCount students', style: const TextStyle(color: Colors.white70)),
+        isThreeLine: true,
+      ),
+    );
+  }
+}
+
+class PastSessionsScreen extends StatelessWidget {
+  final String lecturerId;
+  final String? moduleFilter;
+  const PastSessionsScreen({Key? key, required this.lecturerId, this.moduleFilter}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('All Past Sessions'),
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: SessionService().getCompletedSessionsStream(lecturerId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              
+              final docs = snapshot.data?.docs ?? [];
+              var filteredDocs = docs;
+              if (moduleFilter != null) {
+                filteredDocs = filteredDocs.where((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  final code = data['module_code'] ?? data['module'] ?? '';
+                  return code == moduleFilter;
+                }).toList();
+              }
+              
+              if (filteredDocs.isEmpty) {
+                return Center(
+                  child: Text(
+                    moduleFilter != null ? 'No past sessions for $moduleFilter.' : 'No past sessions.', 
+                    style: const TextStyle(color: Colors.white54)
+                  )
+                );
+              }
+              
+              return ListView.builder(
+                itemCount: filteredDocs.length,
+                itemBuilder: (context, index) {
+                  final data = filteredDocs[index].data() as Map<String, dynamic>;
+                  return PastSessionCard(data: data);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ============================================================================
@@ -914,7 +1267,66 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void initState() {
     super.initState();
-    _startScanning();
+    _hydrateState().then((_) {
+      if (_scansPerformed == 0 && !_isScanning) {
+        _startScanning();
+      }
+    });
+  }
+
+  Future<void> _hydrateState() async {
+    try {
+      final sessionSnap = await FirebaseFirestore.instance.collection('active_sessions').doc(widget.sessionId).get();
+      if (sessionSnap.exists) {
+        final data = sessionSnap.data() as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _scansPerformed = data['scans_performed'] ?? 0;
+          });
+        }
+      }
+
+      final recordsSnap = await FirebaseFirestore.instance.collection('attendance_records')
+          .where('session_id', isEqualTo: widget.sessionId)
+          .get();
+      
+      final Map<String, StudentAttendance> restoredStudents = {};
+      for (var doc in recordsSnap.docs) {
+        final data = doc.data();
+        final regNo = (data['reg_no'] ?? '').toString();
+        final studentId = (data['student_id'] ?? '').toString();
+        final rssi = data['rssi'] as int? ?? -60;
+        final scanCount = data['scan_count'] as int? ?? 1;
+        
+        DateTime timestamp;
+        if (data['marked_at'] != null) {
+          timestamp = (data['marked_at'] as Timestamp).toDate();
+        } else if (data['timestamp'] != null) {
+          timestamp = (data['timestamp'] as Timestamp).toDate();
+        } else {
+          timestamp = DateTime.now();
+        }
+
+        if (regNo.isNotEmpty && studentId.isNotEmpty) {
+          restoredStudents[regNo] = StudentAttendance(
+            regNo: regNo,
+            studentId: studentId,
+            rssi: rssi,
+            timestamp: timestamp,
+            isVerified: true,
+            scan_count: scanCount,
+          );
+        }
+      }
+      
+      if (mounted && restoredStudents.isNotEmpty) {
+        setState(() {
+          _detectedStudents.addAll(restoredStudents);
+        });
+      }
+    } catch (e) {
+      print("Error hydrating state: $e");
+    }
   }
 
   Future<bool> _requestPermissions() async {
@@ -1171,16 +1583,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   void _stopScanning() {
     FlutterBluePlus.stopScan();
-    setState(() {
+    
+    int newScans = _scansPerformed + 1;
+    if (mounted) {
+      setState(() {
+        _isScanning = false;
+        _scansPerformed = newScans;
+      });
+    } else {
       _isScanning = false;
-      _scansPerformed++;
-    });
+      _scansPerformed = newScans;
+    }
+    
     // Update session document with scans performed
     FirebaseFirestore.instance
         .collection('active_sessions')
         .doc(widget.sessionId)
-        .update({'scans_performed': _scansPerformed});
-    print("🔴 Scan stopped (Total scans: $_scansPerformed)");
+        .update({'scans_performed': newScans});
+    print("🔴 Scan stopped (Total scans: $newScans)");
   }
 
   Future<void> _endSession() async {
@@ -1224,8 +1644,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: () async {
+        if (!_isScanning) return true;
+        
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1D1E33),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Stop Scanning?'),
+            content: const Text('A scan is currently active. Do you want to stop it and save the round before leaving?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('STAY'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('STOP & LEAVE'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldPop == true) {
+          _stopScanning();
+          return true;
+        }
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
         backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
         title: const Text('Live Scanner'),
@@ -1425,6 +1876,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -1527,7 +1979,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   void dispose() {
-    _stopScanning();
+    if (_isScanning) {
+      _stopScanning();
+    }
     super.dispose();
   }
 }

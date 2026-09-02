@@ -568,4 +568,22 @@ class SessionService {
         .orderBy('marked_at', descending: true)
         .snapshots();
   }
+
+  /// Get active sessions list for a lecturer
+  Stream<QuerySnapshot> getActiveSessionsStream(String lecturerId) {
+    return _firestore
+        .collection('active_sessions')
+        .where('lecturer_id', isEqualTo: lecturerId)
+        .where('status', isEqualTo: 'active')
+        .snapshots();
+  }
+
+  /// Get completed sessions list for a lecturer
+  Stream<QuerySnapshot> getCompletedSessionsStream(String lecturerId) {
+    return _firestore
+        .collection('active_sessions')
+        .where('lecturer_id', isEqualTo: lecturerId)
+        .where('status', isEqualTo: 'completed')
+        .snapshots();
+  }
 }
