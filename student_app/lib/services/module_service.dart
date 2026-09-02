@@ -110,12 +110,9 @@ class ModuleService {
       }
 
       final attendanceCounts = studentData?['attendance_counts'];
-      final absenceCounts = studentData?['absence_counts'];
 
       final shouldInitAttendance =
           attendanceCounts is! Map || !attendanceCounts.containsKey(code);
-      final shouldInitAbsence =
-          absenceCounts is! Map || !absenceCounts.containsKey(code);
 
       final updates = <String, dynamic>{
         'enrolled_module_ids': FieldValue.arrayUnion([code]),
@@ -123,12 +120,14 @@ class ModuleService {
       if (shouldInitAttendance) {
         updates['attendance_counts.$code'] = 0;
       }
-      if (shouldInitAbsence) {
-        updates['absence_counts.$code'] = 0;
-      }
 
       // Create doc if missing without overwriting other fields.
       tx.set(studentRef, updates, SetOptions(merge: true));
+
+      // Increment enrolled count on the module document
+      tx.set(moduleRef, {
+        'enrolled_count': FieldValue.increment(1),
+      }, SetOptions(merge: true));
 
       // Optional enrollment subcollection.
       tx.set(enrollmentRef, {

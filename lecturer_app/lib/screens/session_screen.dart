@@ -16,9 +16,11 @@ class _SessionScreenState extends State<SessionScreen> {
   final _classNameController = TextEditingController();
   final _durationController = TextEditingController(text: '60');
   
+  bool isSessionActive = false;
   bool isScanning = false;
+  int scansPerformed = 0;
   List<Map<String, dynamic>> foundStudents = [];
-  Set<String> processedHashes = {};
+  Set<String> processedHashesInCurrentScan = {};
   String? currentSessionId;
   DateTime? sessionStartTime;
 
@@ -45,13 +47,6 @@ class _SessionScreenState extends State<SessionScreen> {
       return;
     }
 
-    // Request permissions
-    await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.location
-    ].request();
-
     User? user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
 
@@ -66,19 +61,36 @@ class _SessionScreenState extends State<SessionScreen> {
       'start_time': FieldValue.serverTimestamp(),
       'status': 'Active Session',
       'student_count': 0,
+      'scans_performed': 0,
     });
 
     setState(() {
       currentSessionId = sessionDoc.id;
-      isScanning = true;
+      isSessionActive = true;
+      isScanning = false;
+      scansPerformed = 0;
       foundStudents.clear();
-      processedHashes.clear();
+      processedHashesInCurrentScan.clear();
       sessionStartTime = DateTime.now();
     });
+  }
 
-    // Start BLE scan
+  Future<void> _startScanning() async {
+    // Request permissions
+    await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.location
+    ].request();
+
+    setState(() {
+      isScanning = true;
+      processedHashesInCurrentScan.clear();
+    });
+
+    // Start BLE scan for a short window if they don't stop it manually
     await FlutterBluePlus.startScan(
-      timeout: Duration(minutes: int.tryParse(_durationController.text) ?? 60),
+      timeout: const Duration(minutes: 5), // Auto stop after 5 mins just in case
     );
 
     // Listen to scan results
@@ -90,22 +102,32 @@ class _SessionScreenState extends State<SessionScreen> {
           if (uuid.toLowerCase().startsWith('bf27730d-860a-4e09')) {
             String hashHex = _uuidToDeviceId(uuid);
             
-            if (hashHex.isNotEmpty && !processedHashes.contains(hashHex)) {
-              processedHashes.add(hashHex);
+            if (hashHex.isNotEmpty && !processedHashesInCurrentScan.contains(hashHex)) {
+              processedHashesInCurrentScan.add(hashHex);
               _verifyAndRecordAttendance(hashHex, r.rssi);
             }
           }
         }
       }
     });
+  }
 
-    // Auto-stop after duration
-    int duration = int.tryParse(_durationController.text) ?? 60;
-    Future.delayed(Duration(minutes: duration), () {
-      if (mounted && isScanning) {
-        _stopSession();
-      }
+  Future<void> _stopScanning() async {
+    await FlutterBluePlus.stopScan();
+    
+    setState(() {
+      isScanning = false;
+      scansPerformed++;
     });
+
+    if (currentSessionId != null) {
+      await FirebaseFirestore.instance
+          .collection('attendance_sessions')
+          .doc(currentSessionId)
+          .update({
+        'scans_performed': FieldValue.increment(1),
+      });
+    }
   }
 
   Future<void> _verifyAndRecordAttendance(String hashHex, int rssi) async {
@@ -121,46 +143,76 @@ class _SessionScreenState extends State<SessionScreen> {
         String studentId = studentDoc.id;
         String actualDeviceId = studentDoc.get('device_id');
 
-        // Record attendance
-        await FirebaseFirestore.instance
+        var recordQuery = await FirebaseFirestore.instance
             .collection('attendance_records')
-            .add({
-          'session_id': currentSessionId,
-          'student_id': studentId,
-          'reg_no': regNo,
-          'device_id': actualDeviceId,
-          'device_id_hash': hashHex,
-          'rssi': rssi,
-          'marked_at': FieldValue.serverTimestamp(),
-          'status': 'present',
-        });
+            .where('session_id', isEqualTo: currentSessionId)
+            .where('student_id', isEqualTo: studentId)
+            .get();
 
-        // Update session count
-        await FirebaseFirestore.instance
-            .collection('attendance_sessions')
-            .doc(currentSessionId)
-            .update({
-          'student_count': FieldValue.increment(1),
-        });
-
-        setState(() {
-          foundStudents.add({
+        if (recordQuery.docs.isNotEmpty) {
+          // Update existing record
+          await FirebaseFirestore.instance
+              .collection('attendance_records')
+              .doc(recordQuery.docs.first.id)
+              .update({
+            'scan_count': FieldValue.increment(1),
+            'marked_at': FieldValue.serverTimestamp(),
+            'rssi': rssi,
+          });
+        } else {
+          // Create new record
+          await FirebaseFirestore.instance
+              .collection('attendance_records')
+              .add({
+            'session_id': currentSessionId,
+            'student_id': studentId,
             'reg_no': regNo,
             'device_id': actualDeviceId,
+            'device_id_hash': hashHex,
             'rssi': rssi,
-            'time': DateFormat('hh:mm a').format(DateTime.now()),
-            'verified': true,
+            'marked_at': FieldValue.serverTimestamp(),
+            'status': 'pending', // Will be finalized on end session
+            'scan_count': 1,
           });
+
+          // Update session count only on first detection
+          await FirebaseFirestore.instance
+              .collection('attendance_sessions')
+              .doc(currentSessionId)
+              .update({
+            'student_count': FieldValue.increment(1),
+          });
+        }
+
+        setState(() {
+          int existingIndex = foundStudents.indexWhere((s) => s['reg_no'] == regNo);
+          if (existingIndex >= 0) {
+            foundStudents[existingIndex]['time'] = DateFormat('hh:mm a').format(DateTime.now());
+            foundStudents[existingIndex]['scan_count'] = (foundStudents[existingIndex]['scan_count'] ?? 1) + 1;
+          } else {
+            foundStudents.add({
+              'reg_no': regNo,
+              'device_id': actualDeviceId,
+              'rssi': rssi,
+              'time': DateFormat('hh:mm a').format(DateTime.now()),
+              'verified': true,
+              'scan_count': 1,
+            });
+          }
         });
       } else {
         setState(() {
-          foundStudents.add({
-            'reg_no': 'Unknown',
-            'device_id': 'Hash: $hashHex',
-            'rssi': rssi,
-            'time': DateFormat('hh:mm a').format(DateTime.now()),
-            'verified': false,
-          });
+          int existingIndex = foundStudents.indexWhere((s) => s['device_id'] == 'Hash: $hashHex');
+          if (existingIndex < 0) {
+            foundStudents.add({
+              'reg_no': 'Unknown',
+              'device_id': 'Hash: $hashHex',
+              'rssi': rssi,
+              'time': DateFormat('hh:mm a').format(DateTime.now()),
+              'verified': false,
+              'scan_count': 1,
+            });
+          }
         });
       }
     } catch (e) {
@@ -168,10 +220,28 @@ class _SessionScreenState extends State<SessionScreen> {
     }
   }
 
-  Future<void> _stopSession() async {
-    await FlutterBluePlus.stopScan();
+  Future<void> _endSession() async {
+    if (isScanning) {
+      await _stopScanning();
+    }
     
     if (currentSessionId != null) {
+      int requiredScans = scansPerformed > 0 ? scansPerformed : 1;
+      
+      // Finalize student statuses
+      var recordsQuery = await FirebaseFirestore.instance
+          .collection('attendance_records')
+          .where('session_id', isEqualTo: currentSessionId)
+          .get();
+          
+      var batch = FirebaseFirestore.instance.batch();
+      for (var doc in recordsQuery.docs) {
+        int studentScanCount = doc.data().containsKey('scan_count') ? doc.get('scan_count') : 1;
+        String finalStatus = studentScanCount >= requiredScans ? 'present' : 'left_early';
+        batch.update(doc.reference, {'status': finalStatus});
+      }
+      await batch.commit();
+
       await FirebaseFirestore.instance
           .collection('attendance_sessions')
           .doc(currentSessionId)
@@ -182,6 +252,7 @@ class _SessionScreenState extends State<SessionScreen> {
     }
 
     setState(() {
+      isSessionActive = false;
       isScanning = false;
       currentSessionId = null;
       sessionStartTime = null;
@@ -201,7 +272,7 @@ class _SessionScreenState extends State<SessionScreen> {
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         title: Text(
-          isScanning ? 'Scanning...' : 'Start Session',
+          isSessionActive ? (isScanning ? 'Scanning...' : 'Session Active') : 'Start Session',
           style: const TextStyle(color: Colors.white),
         ),
         actions: [
@@ -232,7 +303,7 @@ class _SessionScreenState extends State<SessionScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!isScanning) ...[
+            if (!isSessionActive) ...[
               const Text(
                 'Start Attendance Session',
                 style: TextStyle(
@@ -407,15 +478,54 @@ class _SessionScreenState extends State<SessionScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildScanStatCard(
-                      'Duration',
-                      sessionStartTime != null
-                          ? '${DateTime.now().difference(sessionStartTime!).inMinutes} min'
-                          : '0 min',
+                      'Scans Done',
+                      '$scansPerformed',
                       Colors.blue,
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 24),
+              
+              // Scan Controls
+              if (isScanning)
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _stopScanning,
+                    icon: const Icon(Icons.stop_circle_outlined, color: Colors.white),
+                    label: const Text(
+                      'Stop Current Scan',
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _startScanning,
+                    icon: const Icon(Icons.radar, color: Colors.white),
+                    label: const Text(
+                      'Start New Scan',
+                      style: TextStyle(fontSize: 16, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
+                ),
               const SizedBox(height: 24),
               
               // Student List
@@ -488,10 +598,10 @@ class _SessionScreenState extends State<SessionScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: _stopSession,
+                  onPressed: _endSession,
                   icon: const Icon(Icons.stop, color: Colors.white),
                   label: const Text(
-                    'Stop Session',
+                    'End Session',
                     style: TextStyle(fontSize: 16, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(
@@ -506,7 +616,7 @@ class _SessionScreenState extends State<SessionScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: !isScanning
+      bottomNavigationBar: !isSessionActive
           ? Padding(
               padding: const EdgeInsets.all(20),
               child: SizedBox(
@@ -520,7 +630,7 @@ class _SessionScreenState extends State<SessionScreen> {
                     ),
                   ),
                   child: const Text(
-                    'Start Scanning',
+                    'Start Session',
                     style: TextStyle(fontSize: 16, color: Colors.white),
                   ),
                 ),
@@ -619,9 +729,26 @@ class _SessionScreenState extends State<SessionScreen> {
                     fontSize: 16,
                   ),
                 ),
-                Text(
-                  student['time'] ?? '',
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                Row(
+                  children: [
+                    Text(
+                      student['time'] ?? '',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                    const SizedBox(width: 8),
+                    if (student['scan_count'] != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.blue[50],
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'Scans: ${student['scan_count']}',
+                          style: TextStyle(color: Colors.blue[700], fontSize: 10, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

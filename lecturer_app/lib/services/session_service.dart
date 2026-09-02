@@ -95,7 +95,7 @@ class SessionService {
           .get();
 
       if (existingRecords.docs.isNotEmpty) {
-        // Already marked in root collection. Ensure the per-session doc exists too.
+        // Update existing record
         final batch = _firestore.batch();
         batch.set(activeAttendanceRef, {
           'student_uid': studentId,
@@ -104,8 +104,13 @@ class SessionService {
           'timestamp': FieldValue.serverTimestamp(),
           'date': dateString,
           'rssi': rssi,
-          'status': 'present',
         }, SetOptions(merge: true));
+        
+        batch.update(existingRecords.docs.first.reference, {
+          'scan_count': FieldValue.increment(1),
+          'marked_at': FieldValue.serverTimestamp(),
+          'rssi': rssi,
+        });
         await batch.commit();
         return;
       }
@@ -121,7 +126,7 @@ class SessionService {
         'timestamp': FieldValue.serverTimestamp(),
         'date': dateString,
         'rssi': rssi,
-        'status': 'present',
+        'status': 'pending',
       }, SetOptions(merge: true));
 
       batch.set(attendanceRef, {
@@ -139,7 +144,8 @@ class SessionService {
         'reg_no': regNo,
         'marked_at': FieldValue.serverTimestamp(),
         'rssi': rssi,
-        'status': 'present',
+        'status': 'pending',
+        'scan_count': 1,
       });
 
       batch.update(sessionRef, {
@@ -159,12 +165,69 @@ class SessionService {
     }
   }
 
+  /// Increment the scans performed count for a session
+  Future<void> incrementScanRound(String sessionId) async {
+    try {
+      await _firestore
+          .collection('active_sessions')
+          .doc(sessionId)
+          .update({
+        'scans_performed': FieldValue.increment(1),
+      });
+    } catch (e) {
+      throw Exception('Failed to increment scan round: $e');
+    }
+  }
+
   /// End current session
   Future<void> endSession(String sessionId, {int? totalStudents}) async {
     try {
       final sessionRef = _firestore
           .collection('active_sessions')
           .doc(sessionId);
+
+      // Finalize statuses based on multi-scan
+      final sessionSnapBeforeTx = await sessionRef.get();
+      if (sessionSnapBeforeTx.exists) {
+        final sessionData = sessionSnapBeforeTx.data() as Map<String, dynamic>;
+        int scansPerformed = sessionData['scans_performed'] ?? 1;
+        if (scansPerformed < 1) scansPerformed = 1;
+
+        final recordsSnap = await _firestore
+            .collection('attendance_records')
+            .where('session_id', isEqualTo: sessionId)
+            .get();
+
+        final batch = _firestore.batch();
+        List<String> leftEarlyStudentIds = [];
+        
+        for (var doc in recordsSnap.docs) {
+          int scanCount = doc.data().containsKey('scan_count') ? doc.get('scan_count') : 1;
+          String finalStatus = scanCount >= scansPerformed ? 'present' : 'left_early';
+          batch.update(doc.reference, {'status': finalStatus});
+          
+          String regNo = doc.get('reg_no');
+          batch.update(sessionRef.collection('attendance').doc(regNo), {'status': finalStatus});
+
+          if (finalStatus == 'left_early') {
+            String studentId = doc.get('student_id');
+            leftEarlyStudentIds.add(studentId);
+            String moduleKey = doc.get('module_code');
+            batch.update(_firestore.collection('students').doc(studentId), {
+               'attendance_counts.$moduleKey': FieldValue.increment(-1),
+            });
+          }
+        }
+        
+        if (leftEarlyStudentIds.isNotEmpty) {
+          batch.update(sessionRef, {
+            'students_present': FieldValue.arrayRemove(leftEarlyStudentIds),
+            'student_count': FieldValue.increment(-leftEarlyStudentIds.length),
+          });
+        }
+        
+        await batch.commit();
+      }
 
       String? moduleKeyOut;
       Timestamp? endedAtOut;
@@ -287,6 +350,12 @@ class SessionService {
 
     for (final doc in presentSnap.docs) {
       final data = doc.data();
+      final statusRaw = data['status'];
+      final status = statusRaw is String ? statusRaw.trim().toLowerCase() : '';
+      if (status != 'present') {
+        continue;
+      }
+      
       final uid = (data['student_uid'] as String?)?.trim();
       if (uid != null && uid.isNotEmpty) {
         presentUids.add(uid);

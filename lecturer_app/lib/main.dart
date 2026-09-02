@@ -906,6 +906,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
   bool _isScanning = false;
   final Map<String, StudentAttendance> _detectedStudents = {};
   int _devicesFound = 0;
+  int _scansPerformed = 0;
+  final Set<String> _processedRegNosInCurrentScan = {};
 
   static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
 
@@ -979,7 +981,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
       }
     }
 
-    setState(() => _isScanning = true);
+    setState(() {
+      _isScanning = true;
+      _processedRegNosInCurrentScan.clear();
+    });
 
     print("========================================");
     print("🔵 LECTURER APP: Starting BLE Scan");
@@ -1072,12 +1077,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
     print("🎓 Processing Student:");
     print("   RegNo: $regNo");
 
-    // Check if already processed in this session
-    if (_detectedStudents.containsKey(regNo)) {
-      print("⏭️  Student already marked - SKIPPED");
+    // Check if already processed in THIS scan
+    if (_processedRegNosInCurrentScan.contains(regNo)) {
+      print("⏭️  Student already marked in this scan - SKIPPED");
       print("========================================\n");
       return;
     }
+    _processedRegNosInCurrentScan.add(regNo);
 
     // Validate RegNo format
     final regNoLower = regNo.toLowerCase();
@@ -1134,12 +1140,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
       print("========================================\n");
 
       setState(() {
+        int newScanCount = 1;
+        if (_detectedStudents.containsKey(regNo)) {
+           newScanCount = (_detectedStudents[regNo]?.scan_count ?? 0) + 1;
+        }
         _detectedStudents[regNo] = StudentAttendance(
           regNo: regNo,
           studentId: studentId,
           rssi: result.rssi,
           timestamp: DateTime.now(),
           isVerified: true,
+          scan_count: newScanCount,
         );
       });
 
@@ -1160,8 +1171,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   void _stopScanning() {
     FlutterBluePlus.stopScan();
-    setState(() => _isScanning = false);
-    print("🔴 Scan stopped");
+    setState(() {
+      _isScanning = false;
+      _scansPerformed++;
+    });
+    // Update session document with scans performed
+    FirebaseFirestore.instance
+        .collection('active_sessions')
+        .doc(widget.sessionId)
+        .update({'scans_performed': _scansPerformed});
+    print("🔴 Scan stopped (Total scans: $_scansPerformed)");
   }
 
   Future<void> _endSession() async {
@@ -1187,7 +1206,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
 
     if (confirm == true) {
-      _stopScanning();
+      if (_isScanning) {
+        _stopScanning();
+      }
 
       // End session and update module counters atomically.
       await SessionService().endSession(
@@ -1242,26 +1263,79 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   ),
                   const SizedBox(height: 12),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _isScanning ? Colors.green : Colors.red,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'COMPLETED ROUNDS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '$_scansPerformed',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      if (_scansPerformed == 0 && !_isScanning)
+                                        const Text(
+                                          'None yet',
+                                          style: TextStyle(color: Colors.white54, fontSize: 14),
+                                        ),
+                                      ...List.generate(
+                                        _scansPerformed,
+                                        (index) => const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.greenAccent,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      if (_isScanning)
+                                        const Padding(
+                                          padding: EdgeInsets.only(left: 4.0),
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _isScanning ? 'Scanning Active' : 'Scan Stopped',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${_detectedStudents.length} Present',
+                        '${_detectedStudents.length} Students',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -1331,8 +1405,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                             : const Color(0xFF00BCD4),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      icon: Icon(_isScanning ? Icons.pause : Icons.play_arrow),
-                      label: Text(_isScanning ? 'PAUSE SCAN' : 'RESUME SCAN'),
+                      icon: Icon(_isScanning ? Icons.stop_circle_outlined : Icons.radar),
+                      label: Text(_isScanning ? 'STOP CURRENT ROUND' : 'START NEW ROUND'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1389,15 +1463,45 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  student.isVerified
-                      ? 'Verified • ${_formatTime(student.timestamp)}'
-                      : 'Unknown Device',
-                  style: TextStyle(
-                    color: student.isVerified ? Colors.white70 : Colors.red,
-                    fontSize: 14,
+                if (student.isVerified)
+                  Builder(
+                    builder: (context) {
+                      int targetRounds = _scansPerformed + (_isScanning ? 1 : 0);
+                      if (student.scan_count > targetRounds) {
+                        targetRounds = student.scan_count;
+                      }
+                      int missingCount = targetRounds - student.scan_count;
+                      
+                      return Row(
+                        children: [
+                          ...List.generate(
+                            student.scan_count,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 2.0),
+                              child: Icon(Icons.star, color: Colors.amber, size: 14),
+                            ),
+                          ),
+                          ...List.generate(
+                            missingCount,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 2.0),
+                              child: Icon(Icons.star_border, color: Colors.white30, size: 14),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatTime(student.timestamp),
+                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                else
+                  const Text(
+                    'Unknown Device',
+                    style: TextStyle(color: Colors.red, fontSize: 14),
                   ),
-                ),
               ],
             ),
           ),
@@ -1438,6 +1542,7 @@ class StudentAttendance {
   final int rssi;
   final DateTime timestamp;
   final bool isVerified;
+  int scan_count;
 
   StudentAttendance({
     required this.regNo,
@@ -1445,5 +1550,6 @@ class StudentAttendance {
     required this.rssi,
     required this.timestamp,
     required this.isVerified,
+    this.scan_count = 1,
   });
 }
