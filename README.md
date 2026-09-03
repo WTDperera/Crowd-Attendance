@@ -16,8 +16,6 @@ This is a **zero-touch attendance marking system** for educational institutions:
 
 ## 🏗️ System Architecture (NEW)
 
-## 🏗️ System Architecture (NEW)
-
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          FIREBASE PROJECT                           │
@@ -69,11 +67,11 @@ Framework: Flutter 3.10+
 Language: Dart
 BLE Library: flutter_ble_peripheral ^2.0.0 (Peripheral mode)
 Backend: 
-  - firebase_core ^3.15.2
-  - firebase_auth ^5.7.0
-  - cloud_firestore ^5.6.12
-Device ID: device_info_plus ^11.5.0
-Permissions: permission_handler ^11.0.1
+  - firebase_core ^3.0.0
+  - firebase_auth ^5.0.0
+  - cloud_firestore ^5.0.0
+Device ID: device_info_plus ^13.1.0
+Permissions: permission_handler ^11.3.0
 ```
 
 ### Key Features
@@ -100,7 +98,8 @@ Login Flow:
 #### 2. **BLE Broadcasting** 📡
 ```dart
 Service UUID: bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c (Fixed)
-Local Name: REGISTRATION NUMBER (e.g., "EG2023001")
+Local Name: "SJP" (Short name to save packet space)
+Manufacturer Data: Registration number encoded (Company ID: 0xFFFF)
 Advertising Mode: Balanced
 TX Power: High
 Range: ~10-30 meters
@@ -108,7 +107,8 @@ Range: ~10-30 meters
 
 **What Gets Broadcast:**
 - **Service UUID**: Fixed identifier for "Student Attendance System"
-- **Device Name**: Student's registration number (uppercase)
+- **Device Name**: "SJP"
+- **Manufacturer Data**: Student's registration number securely encoded (Company ID: 0xFFFF)
 - **Not Connectable**: Advertisement-only (no connection overhead)
 
 #### 3. **UI/UX**
@@ -140,10 +140,10 @@ Scan for broadcasting students, verify against database, and mark attendance in 
 ```yaml
 Framework: Flutter 3.10+
 Language: Dart
-BLE Library: flutter_blue_plus ^1.36.8 (Central mode)
+BLE Library: flutter_blue_plus ^1.31.0 (Central mode)
 Backend: Firebase (Auth + Firestore)
-Device ID: device_info_plus ^11.5.0
-Permissions: permission_handler ^11.0.1
+Device ID: device_info_plus ^11.0.0
+Permissions: permission_handler ^11.3.0
 ```
 
 ### Key Features
@@ -176,7 +176,7 @@ Scanning Logic:
      timeout: 30 minutes
    )
 3. For each detected device:
-   a. Extract RegNo from device localName
+   a. Extract RegNo from manufacturer data (Company ID 0xFFFF)
    b. Check if already marked (prevent duplicates)
    c. Query Firebase: students WHERE reg_no == regNo
    d. If found → Mark attendance in session subcollection
@@ -193,7 +193,7 @@ Scanning Logic:
 #### 4. **Attendance Verification Flow** ✅
 ```dart
 Device Detected:
-├─ Extract RegNo: "eg2023001"
+├─ Extract RegNo from Manufacturer Data: "eg2023001"
 ├─ Query Firestore: students.where('reg_no', ==, 'eg2023001')
 ├─ Student Found?
 │   ├─ YES:
