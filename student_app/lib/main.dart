@@ -1,341 +1,304 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
-import 'dart:convert';
-import 'dart:typed_data';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:async' show TimeoutException;
+import 'dart:io' show Platform;
+import 'dart:convert' show utf8;
+import 'dart:typed_data' show Uint8List;
 
-// 🔧 ONE-TIME FIREBASE UPDATE FUNCTION
-// Call this once to add device_id_hash to all existing students
-Future<void> updateAllStudentHashes() async {
-  print("\n========================================");
-  print("🔧 Firebase Hash Update Started");
-  print("========================================\n");
+import 'screens/my_modules_screen.dart';
+import 'screens/modules_screen.dart';
 
-  try {
-    var studentsRef = FirebaseFirestore.instance.collection('students');
-    var snapshot = await studentsRef.get();
-    
-    print("📊 Found ${snapshot.docs.length} students\n");
+// ============================================================================
+// MAIN ENTRY POINT
+// ============================================================================
 
-    int updated = 0;
-    int skipped = 0;
-
-    for (var doc in snapshot.docs) {
-      try {
-        var data = doc.data();
-        String deviceId = data['device_id'] ?? '';
-        String regNo = data['reg_no'] ?? 'Unknown';
-
-        // Check if already has hash
-        if (data.containsKey('device_id_hash')) {
-          print("⏭️  $regNo already has hash - SKIPPED");
-          skipped++;
-          continue;
-        }
-
-        if (deviceId.isEmpty) {
-          print("⚠️  $regNo has no device_id - SKIPPED");
-          skipped++;
-          continue;
-        }
-
-        // Calculate hash (same algorithm as encoding)
-        int hash = deviceId.hashCode;
-        String hashHex = hash.abs().toRadixString(16).padLeft(8, '0');
-
-        // Update document with hash field
-        await doc.reference.update({
-          'device_id_hash': hashHex,
-        });
-
-        print("✅ Updated $regNo:");
-        print("   Device ID: $deviceId");
-        print("   Hash: $hashHex\n");
-        
-        updated++;
-
-      } catch (e) {
-        print("❌ Error updating ${doc.id}: $e\n");
-      }
-    }
-
-    print("========================================");
-    print("📊 Update Summary:");
-    print("   ✅ Updated: $updated students");
-    print("   ⏭️  Skipped: $skipped students");
-    print("========================================\n");
-
-  } catch (e) {
-    print("❌ Fatal error: $e\n");
-  }
-}
-
-// 1. App Entry Point
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Initialize Firebase
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: LoginPage(), // Start with Login Page
-    theme: ThemeData.dark(), // Dark theme
-  ));
+  await Firebase.initializeApp();
+
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
+
+  runApp(const StudentApp());
 }
 
-// 2. Login Page
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+// ============================================================================
+// APP ROOT
+// ============================================================================
+
+class StudentApp extends StatelessWidget {
+  const StudentApp({super.key});
 
   @override
-  _LoginPageState createState() => _LoginPageState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Student Attendance',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFF00BCD4),
+        scaffoldBackgroundColor: const Color(0xFF0A0E21),
+        colorScheme: ColorScheme.dark(
+          primary: const Color(0xFF00BCD4),
+          secondary: const Color(0xFF00BCD4),
+          surface: const Color(0xFF1D1E33),
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1D1E33),
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00BCD4),
+            foregroundColor: Colors.black,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF1D1E33),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF00BCD4), width: 2),
+          ),
+          labelStyle: const TextStyle(color: Colors.white70),
+          hintStyle: const TextStyle(color: Colors.white38),
+        ),
+        textTheme: const TextTheme(
+          headlineLarge: TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+          ),
+          headlineMedium: TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+          ),
+          bodyLarge: TextStyle(color: Colors.white, fontSize: 16),
+          bodyMedium: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: const Color(0xFF1D1E33),
+          contentTextStyle: const TextStyle(color: Colors.white),
+          behavior: SnackBarBehavior.fixed,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      home: const AuthWrapper(),
+    );
+  }
 }
 
-class _LoginPageState extends State<LoginPage> {
+// ============================================================================
+// AUTH WRAPPER - Route to Login or Broadcast screen
+// ============================================================================
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Color(0xFF0A0E21),
+            body: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00BCD4)),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasData && snapshot.data != null) {
+          return BroadcastScreen(user: snapshot.data!);
+        }
+
+        return const LoginScreen();
+      },
+    );
+  }
+}
+
+// ============================================================================
+// LOGIN SCREEN - Admin-created accounts only
+// ============================================================================
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  final _passController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _obscurePassword = true;
 
-  // Handle login button press
-  Future<void> _handleLogin() async {
-    setState(() => _isLoading = true); // Start loading indicator
-
+  Future<String> _getDeviceId() async {
     try {
-      // 1. Firebase Login (Username/Password Check)
-      UserCredential user = await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: _emailController.text.trim(), 
-          password: _passController.text.trim()
-      );
-
-      // 2. මේ Phone එකේ ID එක ගන්න
-      String currentDeviceId = "";
-      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+      final deviceInfo = DeviceInfoPlugin();
       if (Platform.isAndroid) {
-        AndroidDeviceInfo info = await deviceInfo.androidInfo;
-        currentDeviceId = info.id;
-      }
-
-      // 3. Database එකේ Student ගේ Document එක ගන්න
-      DocumentReference ref = FirebaseFirestore.instance.collection('students').doc(user.user!.uid);
-      DocumentSnapshot doc = await ref.get();
-
-      if (!doc.exists || !doc.data().toString().contains('device_id')) {
-        // --- මෙන්න අලුත් කොටස (New Security Check) ---
-        
-        // ප්‍රශ්නය: මේ ෆෝන් එක දැනටමත් වෙන කෙනෙක්ගේ නමට තියෙනවද?
-        QuerySnapshot deviceCheck = await FirebaseFirestore.instance
-            .collection('students')
-            .where('device_id', isEqualTo: currentDeviceId)
-            .get();
-
-        if (deviceCheck.docs.isNotEmpty) {
-          // Device already registered to another student
-          await FirebaseAuth.instance.signOut(); // Sign out
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("Error: This device is already registered to another student!"), 
-              backgroundColor: Colors.red
-            )
-          );
-          setState(() => _isLoading = false);
-          return; // Stop here
-        }
-        
-        // Lock device to this student only if not registered to anyone
-        // Calculate device_id hash for Firebase query optimization
-        int hash = currentDeviceId.hashCode;
-        String hashHex = hash.abs().toRadixString(16).padLeft(8, '0');
-        
-        await ref.set({
-          'device_id': currentDeviceId,
-          'device_id_hash': hashHex,  // 🔐 NEW: Store hash for BLE lookup
-          'reg_no': _emailController.text.split('@')[0]
-        }, SetOptions(merge: true));
-        
-        print("🔐 Stored in Firebase:");
-        print("   device_id: $currentDeviceId");
-        print("   device_id_hash: $hashHex");
-        print("   reg_no: ${_emailController.text.split('@')[0]}");
-        
-        _goToHome();
-
-      } else {
-        // 4. Student already registered - verify device
-        String registeredId = doc.get('device_id');
-        if (registeredId == currentDeviceId) {
-          _goToHome(); // Correct device - allow access
-        } else {
-          await FirebaseAuth.instance.signOut();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text("BLOCKED: This is not your registered device!"), 
-              backgroundColor: Colors.red
-            )
-          );
-        }
+        final androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        return iosInfo.identifierForVendor ?? 'unknown';
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      print('❌ Error getting device ID: $e');
     }
-    
-    setState(() => _isLoading = false);
+    return 'unknown';
   }
 
-  void _goToHome() async {
-    // Extract RegNo from email
-    String regNo = _emailController.text.split('@')[0];
-    
-    // Get current device ID
-    String deviceId = "";
-    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    if (Platform.isAndroid) {
-      AndroidDeviceInfo info = await deviceInfo.androidInfo;
-      deviceId = info.id;
-    }
-    
-    // Navigate to Home page with both regNo and deviceId
-    Navigator.pushReplacement(
-      context, 
-      MaterialPageRoute(builder: (_) => HomePage(regNo: regNo, deviceId: deviceId))
-    );
-  }
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Student Login")),
-      body: Padding(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.school, size: 80, color: Colors.blue),
-            SizedBox(height: 20),
-            TextField(controller: _emailController, decoration: InputDecoration(border: OutlineInputBorder(), labelText: "Email (eg2022xxxx@sjp.ac.lk)")),
-            SizedBox(height: 10),
-            TextField(controller: _passController, decoration: InputDecoration(border: OutlineInputBorder(), labelText: "Password"), obscureText: true),
-            SizedBox(height: 20),
-            _isLoading 
-              ? CircularProgressIndicator()
-              : ElevatedButton(
-                  onPressed: _handleLogin, 
-                  child: Padding(padding: EdgeInsets.all(12), child: Text("Secure Login", style: TextStyle(fontSize: 18))),
-                )
-          ],
-        ),
-      ),
-    );
-  }
-}
+    setState(() => _isLoading = true);
 
-// 3. Home Page - BLE Broadcasting
-class HomePage extends StatefulWidget {
-  final String regNo;
-  final String deviceId;
-  const HomePage({super.key, required this.regNo, required this.deviceId});
-  @override
-  _HomePageState createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  bool isBroadcasting = false;
-  final FlutterBlePeripheral blePeripheral = FlutterBlePeripheral();
-
-  // 🔧 BLE HARDWARE ENGINEERING: Convert Device ID to UUID using SHA-256 hash
-  // This creates a unique, hardware-bound UUID for secure attendance tracking
-  // Hash ensures full device ID uniqueness even with length constraints
-  String _deviceIdToUUID(String deviceId) {
-    // Base UUID: bf27730d-860a-4e09-XXXX-XXXXXXXXXXXX
-    // We encode a hash of device_id in the last 16 hex digits (8 bytes)
-    
     try {
-      // Use simple hashCode for deterministic conversion
-      // This gives us a 32-bit integer that we can expand to 16 hex digits
-      int hash = deviceId.hashCode;
-      
-      // Convert hash to positive number and expand to 16 hex characters
-      String hashHex = hash.abs().toRadixString(16).padLeft(8, '0');
-      
-      // Store the actual device_id as additional bytes
-      List<int> bytes = utf8.encode(deviceId);
-      String deviceHex = bytes.take(4).map((b) => b.toRadixString(16).padLeft(2, '0')).join('');
-      
-      // Combine: 8 chars from hash + 8 chars from device bytes
-      String combined = (hashHex + deviceHex).padRight(16, '0').substring(0, 16);
-      
-      // Construct UUID: bf27730d-860a-4e09-[4 chars]-[12 chars]
-      String part1 = combined.substring(0, 4);
-      String part2 = combined.substring(4, 16);
-      
-      String uuid = 'bf27730d-860a-4e09-$part1-$part2';
-      
-      print("🔐 ENCODING: '$deviceId' → hash:$hashHex → UUID:$uuid");
-      
-      return uuid;
-    } catch (e) {
-      print("❌ UUID encoding error: $e");
-      return 'bf27730d-860a-4e09-0000-000000000000';
-    }
-  }
+      // Step 1: Authenticate with Firebase Auth
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          )
+          .timeout(const Duration(seconds: 20));
 
-  // Toggle BLE broadcast on button press
-  void _toggleBroadcast() async {
-    print("========================================");
-    print("🔵 STUDENT APP: Toggle broadcast pressed");
-    print("🔵 Current status: ${isBroadcasting ? 'Broadcasting' : 'Not Broadcasting'}");
-    print("🔵 Registration Number: ${widget.regNo}");
-    print("🔐 Device ID: ${widget.deviceId}");
-    print("========================================");
-    
-    // Request Bluetooth permissions first
-    Map<Permission, PermissionStatus> statuses = await [
-      Permission.bluetoothAdvertise, 
-      Permission.bluetoothConnect, 
-      Permission.location
-    ].request();
-    
-    print("📋 Permission Status:");
-    statuses.forEach((permission, status) {
-      print("   $permission: $status");
-    });
+      final uid = userCredential.user!.uid;
+      final currentDeviceId = await _getDeviceId();
 
-    if (isBroadcasting) {
-      // Stop broadcasting if currently active
-      print("🛑 Stopping broadcast...");
-      await blePeripheral.stop();
-      setState(() => isBroadcasting = false);
-      print("✅ Broadcast stopped");
-    } else {
-      try {
-        print("🚀 Starting broadcast...");
-        
-        // 🔧 HYBRID APPROACH: Encode device_id into UUID
-        String deviceUUID = _deviceIdToUUID(widget.deviceId);
-        print("🔐 Device UUID (encoded): $deviceUUID");
-        print("🔧 UUID Structure:");
-        print("   Base: bf27730d-860a-4e09");
-        print("   Encoded Device ID: ${deviceUUID.substring(24)}");
-        
-        // Create BLE advertisement data with device UUID
-        final AdvertiseData data = AdvertiseData(
-          serviceUuid: deviceUUID, // ← Broadcasting device-bound UUID
+      // Step 2: Check Firestore for device binding
+      final studentRef = FirebaseFirestore.instance
+          .collection('students')
+          .doc(uid);
+        final studentDoc = await studentRef
+          .get()
+          .timeout(const Duration(seconds: 20));
+
+      if (!studentDoc.exists) {
+        await FirebaseAuth.instance.signOut();
+        throw Exception('Student record not found. Contact administrator.');
+      }
+
+      final data = studentDoc.data()!;
+      final storedDeviceId = data['device_id']?.toString().trim();
+
+      // Step 3: Device Binding Logic
+      if (storedDeviceId == null || storedDeviceId.isEmpty) {
+        // First login - bind this device
+        await studentRef.set({
+          'device_id': currentDeviceId,
+          'device_locked_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Device successfully bound to your account'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else if (storedDeviceId != currentDeviceId.trim()) {
+        // Device mismatch - BLOCK LOGIN
+        await FirebaseAuth.instance.signOut();
+        throw Exception(
+          'Unauthorized Device\n\nThis account is locked to another device. '
+          'Contact your administrator to reset device binding.',
         );
-        print("📡 Advertisement Data:");
-        print("   localName: ${widget.regNo}");
-        print("   serviceUuid: bf27730d-860a-4e09-889c-2d8b6a9e0fe7");
-        
-        // Start broadcasting
-        await blePeripheral.start(advertiseData: data);
-        setState(() => isBroadcasting = true);
-        print("✅ Broadcasting started successfully!");
-        print("✅ Device Name: ${widget.regNo}");
-        print("========================================");
-      } catch (e) {
-        print("❌ BROADCAST ERROR: $e");
-        print("========================================");
+      }
+
+      // Update last login timestamp
+      await studentRef
+          .update({'last_login': FieldValue.serverTimestamp()})
+          .timeout(const Duration(seconds: 20));
+
+      // Login successful - AuthWrapper will handle navigation
+    } on TimeoutException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Login timed out. Check your connection and try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No account found with this email';
+          break;
+        case 'wrong-password':
+          message = 'Incorrect password';
+          break;
+        case 'invalid-email':
+          message = 'Invalid email format';
+          break;
+        case 'user-disabled':
+          message = 'This account has been disabled';
+          break;
+        default:
+          message = 'Authentication error: ${e.message}';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -343,61 +306,641 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("ID: ${widget.regNo}"), backgroundColor: Colors.grey[900]),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(isBroadcasting ? "Broadcasting Active" : "Ready to Mark", 
-              style: TextStyle(fontSize: 20, color: Colors.grey)),
-            SizedBox(height: 30),
-            
-            // Large circular button
-            GestureDetector(
-              onTap: _toggleBroadcast,
-              child: AnimatedContainer(
-                duration: Duration(milliseconds: 500),
-                width: 200, height: 200,
-                decoration: BoxDecoration(
-                  color: isBroadcasting ? Colors.blue : Colors.grey[800],
-                  shape: BoxShape.circle,
-                  boxShadow: isBroadcasting ? [BoxShadow(color: Colors.blue, blurRadius: 40)] : []
-                ),
-                child: Center(
-                  child: Icon(Icons.wifi_tethering, size: 80, color: Colors.white)
-                ),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App Icon
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF00BCD4),
+                          const Color(0xFF00BCD4).withOpacity(0.5),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.account_circle,
+                      size: 80,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Title
+                  Text(
+                    'Student Login',
+                    style: Theme.of(context).textTheme.headlineLarge,
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Subtitle
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.lock_outline,
+                          color: Color(0xFF00BCD4),
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Device-locked access only',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+
+                  // Email Field
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: !_isLoading,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Color(0xFF00BCD4),
+                      ),
+                      hintText: 'eg123456@sjp.ac.lk',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!value.contains('@')) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Password Field
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    enabled: !_isLoading,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: Color(0xFF00BCD4),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: Colors.white54,
+                        ),
+                        onPressed: () {
+                          setState(() => _obscurePassword = !_obscurePassword);
+                        },
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      return null;
+                    },
+                    onFieldSubmitted: (_) => _handleLogin(),
+                  ),
+                  const SizedBox(height: 40),
+
+                  // Login Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleLogin,
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
+                                ),
+                              ),
+                            )
+                          : const Text('LOGIN'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Info Text
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33).withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF00BCD4).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Accounts are admin-created only.\nContact your institution for credentials.',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: 20),
-            Text(isBroadcasting ? "Tap to Stop" : "Tap to Start", style: TextStyle(color: Colors.white)),
-            
-            SizedBox(height: 50),
-            
-            // 🔧 ONE-TIME UPDATE BUTTON (for existing students)
-            ElevatedButton.icon(
-              onPressed: () async {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("🔧 Updating Firebase hashes..."), backgroundColor: Colors.orange)
-                );
-                await updateAllStudentHashes();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text("✅ Firebase update complete! Check console."), backgroundColor: Colors.green)
-                );
-              },
-              icon: Icon(Icons.update),
-              label: Text("Update Firebase Hashes"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-              ),
-            ),
-            Text(
-              "↑ Click once to add hash field to all students",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+}
+
+// ============================================================================
+// BROADCAST SCREEN - BLE Broadcasting with animation
+// ============================================================================
+
+class BroadcastScreen extends StatefulWidget {
+  final User user;
+
+  const BroadcastScreen({super.key, required this.user});
+
+  @override
+  State<BroadcastScreen> createState() => _BroadcastScreenState();
+}
+
+class _BroadcastScreenState extends State<BroadcastScreen>
+    with SingleTickerProviderStateMixin {
+  final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+  bool _isBroadcasting = false;
+  String? _regNo;
+  String? _studentName;
+  late AnimationController _pulseController;
+
+  static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    _loadStudentData();
+  }
+
+  Future<void> _loadStudentData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('students')
+          .doc(widget.user.uid)
+          .get();
+
+      if (doc.exists) {
+        setState(() {
+          _regNo = doc.data()?['reg_no'];
+          _studentName = doc.data()?['email']?.split('@')[0];
+        });
+      }
+    } catch (e) {
+      print('Error loading student data: $e');
+    }
+  }
+
+  Future<bool> _requestPermissions() async {
+    try {
+      final permissions = [
+        Permission.bluetoothAdvertise,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ];
+
+      for (var permission in permissions) {
+        final status = await permission.request();
+        if (!status.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Permission denied: ${permission.toString().split('.').last}',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      print('❌ Permission error: $e');
+      return false;
+    }
+  }
+
+  Future<void> _toggleBroadcast() async {
+    if (_regNo == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Student data not loaded. Please restart the app.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    try {
+      if (!_isBroadcasting) {
+        // Request permissions
+        final hasPermissions = await _requestPermissions();
+        if (!hasPermissions) return;
+
+        print("========================================");
+        print("🔵 STUDENT APP: Starting Broadcast");
+        print("📋 RegNo: $_regNo");
+        print("🔐 Service UUID: $SERVICE_UUID");
+        print("========================================");
+
+        // Configure BLE advertising with manufacturer data
+        final regNoBytes = utf8.encode(_regNo!);
+        final manufacturerData = Uint8List.fromList(regNoBytes);
+
+        print("🔒 Encoding RegNo as manufacturer data:");
+        print("   Original: $_regNo");
+        print("   Company ID: 0xFFFF (Unreserved)");
+        print("   Data Bytes: ${regNoBytes.length} bytes");
+        print(
+          "   Full Packet: ${manufacturerData.length} bytes (manufacturerId provided separately)",
+        );
+
+        final advertiseData = AdvertiseData(
+          serviceUuid: SERVICE_UUID,
+          localName: "SJP", // Short name to save packet space
+          manufacturerId: 0xFFFF,
+          manufacturerData: manufacturerData,
+        );
+
+        final advertiseSettings = AdvertiseSettings(
+          advertiseMode: AdvertiseMode.advertiseModeBalanced,
+          txPowerLevel: AdvertiseTxPower.advertiseTxPowerHigh,
+          connectable: false,
+          timeout: 0,
+        );
+
+        // Start advertising with manufacturer data
+        await _blePeripheral.start(
+          advertiseData: advertiseData,
+          advertiseSettings: advertiseSettings,
+        );
+
+        setState(() => _isBroadcasting = true);
+
+        print("✅ Broadcasting Active!");
+        print("✅ Local Name: SJP");
+        print(
+          "✅ Manufacturer Data: Company 0xFFFF with ${regNoBytes.length} bytes",
+        );
+        print("========================================");
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Broadcasting started'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Stop broadcasting
+        await _blePeripheral.stop();
+        setState(() => _isBroadcasting = false);
+
+        print("🔴 Broadcasting Stopped");
+        print("========================================");
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Broadcasting stopped'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('❌ Broadcast error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        title: const Text('Student Broadcaster'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.library_books),
+            tooltip: 'Modules',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ModulesScreen(studentUid: widget.user.uid),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.assessment),
+            tooltip: 'My Modules',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MyModulesScreen(studentUid: widget.user.uid),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: () async {
+              if (_isBroadcasting) {
+                await _blePeripheral.stop();
+              }
+              await FirebaseAuth.instance.signOut();
+            },
+          ),
+        ],
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Animated Broadcast Button
+              GestureDetector(
+                onTap: _toggleBroadcast,
+                child: AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _isBroadcasting
+                          ? 1.0 + (_pulseController.value * 0.05)
+                          : 1.0,
+                      child: Container(
+                        width: 200,
+                        height: 200,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: _isBroadcasting
+                                ? [
+                                    const Color(0xFF00BCD4),
+                                    const Color(0xFF00ACC1),
+                                  ]
+                                : [
+                                    const Color(0xFF1D1E33),
+                                    const Color(0xFF2D2E43),
+                                  ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          boxShadow: _isBroadcasting
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(
+                                      0xFF00BCD4,
+                                    ).withOpacity(0.5),
+                                    blurRadius: 40,
+                                    spreadRadius: 10,
+                                  ),
+                                ]
+                              : [],
+                        ),
+                        child: Icon(
+                          _isBroadcasting
+                              ? Icons.bluetooth_searching
+                              : Icons.bluetooth_disabled,
+                          size: 80,
+                          color: _isBroadcasting
+                              ? Colors.white
+                              : Colors.white54,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 48),
+
+              // Registration Number
+              if (_regNo != null)
+                Text(
+                  _regNo!.toUpperCase(),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.headlineLarge?.copyWith(letterSpacing: 2),
+                ),
+              const SizedBox(height: 12),
+
+              // Status Text
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: _isBroadcasting
+                      ? const Color(0xFF00BCD4).withOpacity(0.2)
+                      : const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _isBroadcasting
+                        ? const Color(0xFF00BCD4)
+                        : Colors.white24,
+                    width: 2,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _isBroadcasting ? Colors.green : Colors.red,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _isBroadcasting ? 'BROADCASTING' : 'IDLE',
+                      style: TextStyle(
+                        color: _isBroadcasting
+                            ? const Color(0xFF00BCD4)
+                            : Colors.white54,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 48),
+
+              // Control Button
+              SizedBox(
+                width: double.infinity,
+                height: 60,
+                child: ElevatedButton.icon(
+                  onPressed: _toggleBroadcast,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isBroadcasting
+                        ? Colors.red
+                        : const Color(0xFF00BCD4),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                  icon: Icon(
+                    _isBroadcasting ? Icons.stop : Icons.play_arrow,
+                    size: 28,
+                  ),
+                  label: Text(
+                    _isBroadcasting
+                        ? 'STOP BROADCASTING'
+                        : 'START BROADCASTING',
+                    style: const TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Info Card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'How it works',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(fontSize: 18),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoRow(
+                      Icons.bluetooth,
+                      'Broadcasting via Bluetooth',
+                    ),
+                    _buildInfoRow(
+                      Icons.security,
+                      'Service UUID: $SERVICE_UUID',
+                    ),
+                    _buildInfoRow(Icons.radar, 'Range: ~10-30 meters'),
+                    _buildInfoRow(
+                      Icons.person,
+                      'Attendance auto-marked when detected',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white54, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _blePeripheral.stop();
+    super.dispose();
   }
 }

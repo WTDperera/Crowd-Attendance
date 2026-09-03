@@ -1,0 +1,58 @@
+const mockModules = [
+  {
+    id: 'mod_001',
+    module_code: 'EGT1234',
+    module_name: 'Software Engineering',
+    department: 'ENG',
+    level: '2',
+    semester: '1',
+    created_at: '2026-02-01T09:00:00+05:30',
+  },
+  {
+    id: 'mod_002',
+    module_code: 'EGT2103',
+    module_name: 'Data Structures',
+    department: 'ENG',
+    level: '2',
+    semester: '2',
+    created_at: '2026-01-18T10:15:00+05:30',
+  },
+  {
+    id: 'mod_003',
+    module_code: 'EGT3202',
+    module_name: 'Mobile Computing',
+    department: 'ENG',
+    level: '3',
+    semester: '1',
+    created_at: '2026-01-12T11:30:00+05:30',
+  },
+  {
+    id: 'mod_004',
+    module_code: 'EGT4101',
+    module_name: 'Cloud Systems',
+    department: 'ENG',
+    level: '4',
+    semester: '1',
+    created_at: '2026-02-05T08:45:00+05:30',
+  },
+  {
+    id: 'mod_005',
+    module_code: 'EGT2305',
+    module_name: 'Human Computer Interaction',
+    department: 'ENG',
+    level: '2',
+    semester: '1',
+    created_at: '2026-02-03T12:05:00+05:30',
+  },
+  {
+    id: 'mod_006',
+    module_code: 'EGT3304',
+    module_name: 'Information Security',
+    department: 'ENG',
+    level: '3',
+    semester: '2',
+    created_at: '2026-02-07T14:20:00+05:30',
+  },
+]
+
+export default mockModules

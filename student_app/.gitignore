@@ -33,6 +33,11 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Flutter tooling generated files
+**/linux/flutter/generated_*
+**/windows/flutter/generated_*
+**/macos/Flutter/GeneratedPluginRegistrant.swift
+
 # Symbolication related
 app.*.symbols
 

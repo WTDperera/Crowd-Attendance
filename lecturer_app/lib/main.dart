@@ -1,289 +1,2051 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'dart:convert';
+import 'package:device_info_plus/device_info_plus.dart';
+import 'dart:io' show Platform;
+import 'dart:convert' show utf8;
+import 'package:intl/intl.dart';
+
+import 'services/session_service.dart';
+import 'services/module_service.dart';
+import 'models/module.dart';
+
+// ============================================================================
+// MAIN ENTRY POINT
+// ============================================================================
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: LecturerScanner(),
-    theme: ThemeData.dark(),
-  ));
+
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+    ),
+  );
+
+  runApp(const LecturerApp());
 }
 
-class LecturerScanner extends StatefulWidget {
-  const LecturerScanner({super.key});
+// ============================================================================
+// APP ROOT
+// ============================================================================
+
+class LecturerApp extends StatelessWidget {
+  const LecturerApp({Key? key}) : super(key: key);
 
   @override
-  _LecturerScannerState createState() => _LecturerScannerState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Lecturer Attendance',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        primaryColor: const Color(0xFF00BCD4),
+        scaffoldBackgroundColor: const Color(0xFF0A0E21),
+        colorScheme: ColorScheme.dark(
+          primary: const Color(0xFF00BCD4),
+          secondary: const Color(0xFF00BCD4),
+          surface: const Color(0xFF1D1E33),
+          background: const Color(0xFF0A0E21),
+        ),
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1D1E33),
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF00BCD4),
+            foregroundColor: Colors.black,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1.2,
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xFF1D1E33),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xFF00BCD4), width: 2),
+          ),
+          labelStyle: const TextStyle(color: Colors.white70),
+          hintStyle: const TextStyle(color: Colors.white38),
+        ),
+        textTheme: const TextTheme(
+          headlineLarge: TextStyle(
+            color: Colors.white,
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+          ),
+          headlineMedium: TextStyle(
+            color: Colors.white,
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+          ),
+          bodyLarge: TextStyle(color: Colors.white, fontSize: 16),
+          bodyMedium: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: const Color(0xFF1D1E33),
+          contentTextStyle: const TextStyle(color: Colors.white),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+      home: const AuthWrapper(),
+    );
+  }
 }
 
-class _LecturerScannerState extends State<LecturerScanner> {
-  bool isScanning = false;
-  List<Map<String, dynamic>> foundStudents = []; // List of found students during scan
-  Set<String> processedHashes = {}; // Track which hashes we've already queried
-  
-  // 🔧 BLE HARDWARE ENGINEERING: Decode UUID back to Device ID
-  String _uuidToDeviceId(String uuid) {
-    try {
-      // Extract encoded part from: bf27730d-860a-4e09-XXXX-XXXXXXXXXXXX
-      String lowerUuid = uuid.toLowerCase();
-      
-      // Remove dashes and get the last 16 hex characters
-      String noDashes = lowerUuid.replaceAll('-', '');
-      // UUID format: bf27730d860a4e09 + [16 chars: 8 hash + 8 device bytes]
-      if (noDashes.length < 32) return '';
-      
-      String encodedHex = noDashes.substring(16, 32);
-      
-      // Extract hash portion (first 8 hex chars)
-      String hashHex = encodedHex.substring(0, 8);
-      
-      // Extract device bytes portion (next 8 hex chars)
-      String deviceHex = encodedHex.substring(8, 16);
-      
-      // Convert device hex to bytes to get partial device_id (for debug)
-      List<int> bytes = [];
-      for (int i = 0; i < deviceHex.length && i < 8; i += 2) {
-        String hexByte = deviceHex.substring(i, i + 2);
-        if (hexByte == '00') break;
-        int byteValue = int.parse(hexByte, radix: 16);
-        if (byteValue == 0) break;
-        bytes.add(byteValue);
-      }
-      
-      String partialDeviceId = bytes.isNotEmpty ? utf8.decode(bytes, allowMalformed: true) : '';
-      
-      print("🔓 DECODING: UUID:$uuid");
-      print("   📦 Hash hex: $hashHex");
-      print("   📦 Device hex: $deviceHex");
-      print("   📦 Partial device_id: '$partialDeviceId'");
-      print("   ⚠️  Will query Firebase by hash");
-      
-      // Return the hash hex for Firebase lookup
-      return hashHex;
-      
-    } catch (e) {
-      print("❌ UUID decode error: $e");
-      return '';
-    }
-  }
+// ============================================================================
+// AUTH WRAPPER
+// ============================================================================
 
-  // Start classroom attendance scan
-  void _startClassScan() async {
-    // 1. Request Bluetooth permissions
-    await [
-      Permission.bluetoothScan,
-      Permission.bluetoothConnect,
-      Permission.location
-    ].request();
-    
-    print("========================================");
-    print("🔵 LECTURER APP: Starting scan...");
-    print("========================================");
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({Key? key}) : super(key: key);
 
-    setState(() {
-      isScanning = true;
-      foundStudents.clear(); // Clear previous list
-      processedHashes.clear(); // Clear processed hashes
-    });
-
-    // 2. Start BLE scan (15 seconds timeout)
-    await FlutterBluePlus.startScan(timeout: Duration(seconds: 15));
-    print("✅ Scan started for 15 seconds...");
-
-    // 3. Check each discovered device
-    FlutterBluePlus.scanResults.listen((results) {
-      print("📡 Scan Results - Total Devices: ${results.length}");
-      
-      for (ScanResult r in results) {
-        print("---");
-        print("🔍 Device Found:");
-        print("   Remote ID: ${r.device.remoteId}");
-        print("   RSSI: ${r.rssi} dBm");
-        print("   Service UUIDs: ${r.advertisementData.serviceUuids}");
-        
-        // 🔧 HYBRID APPROACH: Check for our custom UUID format
-        for (var guidObj in r.advertisementData.serviceUuids) {
-          String uuid = guidObj.toString();
-          print("   🔎 Analyzing UUID: $uuid");
-          
-          // Check if UUID starts with our base: bf27730d-860a-4e09
-          if (uuid.toLowerCase().startsWith('bf27730d-860a-4e09')) {
-            print("   ✅ MATCHES Student App UUID format!");
-            
-            // Decode hash from UUID
-            String hashHex = _uuidToDeviceId(uuid);
-            print("   🔓 Decoded Hash: '$hashHex'");
-            
-            if (hashHex.isNotEmpty && !processedHashes.contains(hashHex)) {
-              processedHashes.add(hashHex);
-              print("   🔄 Querying Firebase by hash...");
-              _verifyWithFirebase(hashHex, r.rssi);
-              
-            } else if (hashHex.isEmpty) {
-              print("   ❌ Failed to decode hash from UUID");
-            } else {
-              print("   ⚠️ Device already in list (ignored)");
-            }
-          } else {
-            print("   ⚠️ Not a student app UUID (ignored)");
-          }
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Color(0xFF0A0E21),
+            body: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00BCD4)),
+              ),
+            ),
+          );
         }
-      }
-    });
 
-    // Scan automatically stops after 15 seconds
-    Future.delayed(Duration(seconds: 15), () {
-      setState(() => isScanning = false);
-      print("🛑 Scan stopped after 15 seconds");
-      print("📊 Total students found: ${foundStudents.length}");
-      print("========================================");
-    });
+        if (snapshot.hasData && snapshot.data != null) {
+          return DashboardScreen(user: snapshot.data!);
+        }
+
+        return const LoginScreen();
+      },
+    );
   }
+}
 
-  // Stop scanning manually
-  void _stopClassScan() async {
-    await FlutterBluePlus.stopScan();
-    setState(() => isScanning = false);
-  }
+// ============================================================================
+// LOGIN SCREEN
+// ============================================================================
 
-  // Check if student exists in Firebase database by device_id hash
-  Future<void> _verifyWithFirebase(String hashHex, int rssi) async {
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({Key? key}) : super(key: key);
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  bool _obscurePassword = true;
+
+  Future<String> _getDeviceId() async {
     try {
-      print("🔎 Querying Firebase for device_id_hash: '$hashHex'");
-      
-      // 🔧 HYBRID APPROACH: Query by device_id_hash (hardware-bound)
-      var query = await FirebaseFirestore.instance
-          .collection('students')
-          .where('device_id_hash', isEqualTo: hashHex)
-          .get();
-      
-      print("📊 Firebase Query Results: ${query.docs.length} documents found");
-
-      if (query.docs.isNotEmpty) {
-        // Found! Get the student's registration number and device_id from document
-        var doc = query.docs.first;
-        String regNo = doc.get('reg_no');
-        String actualDeviceId = doc.get('device_id');
-        print("✅ VERIFIED: Hash belongs to device '$actualDeviceId' → student '$regNo'!");
-        print("🔐 Hash: $hashHex");
-        print("🔐 Device ID: $actualDeviceId");
-        print("🎓 Registration: $regNo");
-        
-        setState(() {
-          foundStudents.add({
-            'id': regNo,  // Display registration number
-            'device_id': actualDeviceId,  // Store full device_id for reference
-            'rssi': rssi,
-            'status': 'Verified ✅',
-            'color': Colors.green
-          });
-        });
-      } else {
-        // Not Found! Check if it's because device_id_hash field is missing
-        print("⚠️  IMPORTANT: No student found with hash '$hashHex'");
-        print("⚠️  This usually means:");
-        print("   1. Student hasn't registered with this device");
-        print("   2. Firebase 'device_id_hash' field is missing (run update script!)");
-        
-        setState(() {
-          foundStudents.add({
-            'id': 'Unknown (Hash: ${hashHex.substring(0, 4)}...)',
-            'device_id': 'Not in database',
-            'rssi': rssi,
-            'status': 'Unregistered ❌',
-            'color': Colors.orange
-          });
-        });
+      final deviceInfo = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final androidInfo = await deviceInfo.androidInfo;
+        return androidInfo.id;
+      } else if (Platform.isIOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        return iosInfo.identifierForVendor ?? 'unknown';
       }
     } catch (e) {
-      print("❌ Firebase query error: $e");
+      print('❌ Error getting device ID: $e');
+    }
+    return 'unknown';
+  }
+
+  Future<void> _handleLogin() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      // Step 1: Authenticate
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
+
+      final uid = userCredential.user!.uid;
+      final currentDeviceId = await _getDeviceId();
+
+      // Step 2: Check device binding
+      final lecturerRef = FirebaseFirestore.instance
+          .collection('lecturers')
+          .doc(uid);
+      final lecturerDoc = await lecturerRef.get();
+
+      if (!lecturerDoc.exists) {
+        await FirebaseAuth.instance.signOut();
+        throw Exception('Lecturer record not found. Contact administrator.');
+      }
+
+      final data = lecturerDoc.data()!;
+      final storedDeviceId = data['device_id']?.toString().trim();
+
+      // Step 3: Device binding logic
+      if (storedDeviceId == null || storedDeviceId.isEmpty) {
+        // First login - bind device
+        await lecturerRef.set({
+          'device_id': currentDeviceId,
+          'device_locked_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Device successfully bound'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else if (storedDeviceId != currentDeviceId.trim()) {
+        // Device mismatch - BLOCK
+        await FirebaseAuth.instance.signOut();
+        throw Exception(
+          'Unauthorized Device\n\nThis account is locked to another device.',
+        );
+      }
+
+      // Update last login
+      await lecturerRef.update({'last_login': FieldValue.serverTimestamp()});
+    } on FirebaseAuthException catch (e) {
+      String message = 'Login failed';
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No account found with this email';
+          break;
+        case 'wrong-password':
+          message = 'Incorrect password';
+          break;
+        case 'invalid-email':
+          message = 'Invalid email format';
+          break;
+        case 'user-disabled':
+          message = 'This account has been disabled';
+          break;
+        default:
+          message = 'Authentication error: ${e.message}';
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Lecturer Scanner")),
-      body: Column(
-        children: [
-          // Top Status Bar
-          Container(
-            padding: EdgeInsets.all(20),
-            color: Colors.grey[900],
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Total Found", style: TextStyle(color: Colors.grey)),
-                    Text("${foundStudents.length}", style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, color: Colors.blue)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: isScanning ? null : _startClassScan,
-                      icon: isScanning 
-                          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) 
-                          : Icon(Icons.radar),
-                      label: Text(isScanning ? "Scanning..." : "Start Scan"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isScanning ? Colors.grey : Colors.green,
-                        padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15)
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // App Icon
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [
+                          const Color(0xFF00BCD4),
+                          const Color(0xFF00BCD4).withOpacity(0.5),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
                     ),
-                    if (isScanning) ...[
-                      SizedBox(width: 10),
-                      ElevatedButton.icon(
-                        onPressed: _stopClassScan,
-                        icon: Icon(Icons.stop),
-                        label: Text("Stop"),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 15)
+                    child: const Icon(
+                      Icons.school,
+                      size: 80,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  Text(
+                    'Lecturer Login',
+                    style: Theme.of(context).textTheme.headlineLarge,
+                  ),
+                  const SizedBox(height: 8),
+
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.lock_outline,
+                          color: Color(0xFF00BCD4),
+                          size: 16,
                         ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Device-locked access only',
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 48),
+
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    enabled: !_isLoading,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      labelText: 'Email Address',
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Color(0xFF00BCD4),
                       ),
-                    ]
-                  ],
-                )
-              ],
+                      hintText: 'lecturer@sjp.ac.lk',
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!value.contains('@')) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 20),
+
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    enabled: !_isLoading,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: Color(0xFF00BCD4),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
+                          color: Colors.white54,
+                        ),
+                        onPressed: () {
+                          setState(() => _obscurePassword = !_obscurePassword);
+                        },
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      return null;
+                    },
+                    onFieldSubmitted: (_) => _handleLogin(),
+                  ),
+                  const SizedBox(height: 40),
+
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleLogin,
+                      child: _isLoading
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
+                                ),
+                              ),
+                            )
+                          : const Text('LOGIN'),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1D1E33).withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: const Color(0xFF00BCD4).withOpacity(0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Accounts are admin-created only.\nContact your institution for credentials.',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          
-          // Student List
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+}
+
+// ============================================================================
+// DASHBOARD SCREEN - Session Management
+// ============================================================================
+
+class DashboardScreen extends StatefulWidget {
+  final User user;
+
+  const DashboardScreen({Key? key, required this.user}) : super(key: key);
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  String? _lecturerName;
+  String? _selectedModuleFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLecturerData();
+  }
+
+  Future<void> _loadLecturerData() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('lecturers')
+          .doc(widget.user.uid)
+          .get();
+
+      if (doc.exists) {
+        setState(() {
+          _lecturerName =
+              doc.data()?['name'] ?? widget.user.email?.split('@')[0];
+        });
+      }
+    } catch (e) {
+      print('Error loading lecturer data: $e');
+    }
+  }
+
+  Future<void> _createSession() async {
+    final formKey = GlobalKey<FormState>();
+    final topicController = TextEditingController();
+    final moduleService = ModuleService();
+    String? selectedModuleId;
+    Module? selectedModule;
+
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1D1E33),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Create New Session'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    StreamBuilder<List<Module>>(
+                      stream: moduleService.watchModulesForLecturer(
+                        widget.user.uid,
+                      ),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12),
+                            child: CircularProgressIndicator(),
+                          );
+                        }
+
+                        if (snapshot.hasError) {
+                          return Text(
+                            snapshot.error.toString(),
+                            style: const TextStyle(color: Colors.redAccent),
+                          );
+                        }
+
+                        final modules = snapshot.data ?? const <Module>[];
+                        if (modules.isEmpty) {
+                          return const Text(
+                            'No modules available.',
+                            style: TextStyle(color: Colors.white70),
+                          );
+                        }
+
+                        final stillExists =
+                            selectedModuleId != null &&
+                            modules.any((m) => m.id == selectedModuleId);
+                        if (!stillExists && selectedModuleId != null) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            setDialogState(() {
+                              selectedModuleId = null;
+                              selectedModule = null;
+                            });
+                          });
+                        }
+
+                        return DropdownButtonFormField<String>(
+                          key: ValueKey<String?>(selectedModuleId),
+                          initialValue: selectedModuleId,
+                          dropdownColor: const Color(0xFF1D1E33),
+                          iconEnabledColor: const Color(0xFF00BCD4),
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Module',
+                            hintText: 'Select module',
+                            prefixIcon: Icon(
+                              Icons.book,
+                              color: Color(0xFF00BCD4),
+                            ),
+                          ),
+                          items: modules
+                              .map(
+                                (m) => DropdownMenuItem<String>(
+                                  value: m.id,
+                                  child: Text(
+                                    '${m.code} — ${m.name}',
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                          onChanged: (value) {
+                            setDialogState(() {
+                              selectedModuleId = value;
+                              selectedModule = value == null
+                                  ? null
+                                  : modules.firstWhere((m) => m.id == value);
+                            });
+                          },
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Select module';
+                            }
+                            return null;
+                          },
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: topicController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Session Topic',
+                        hintText: 'e.g., OOP Concepts',
+                        prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Enter session topic';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('CANCEL'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                  child: const Text('START SESSION'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      if (result == true && selectedModule != null) {
+        final moduleCode = selectedModule!.code.trim().toUpperCase();
+        final sessionTopic = topicController.text.trim();
+
+        // Create session in Firestore
+        final sessionRef = await FirebaseFirestore.instance
+            .collection('active_sessions')
+            .add({
+              'lecturer_id': widget.user.uid,
+              // Keep existing fields
+              'module': moduleCode,
+              'topic': sessionTopic,
+              // Canonical fields used by services/modules
+              'module_id': selectedModule!.id,
+              'module_code': moduleCode,
+              'session_topic': sessionTopic,
+              'created_at': FieldValue.serverTimestamp(),
+              'started_at': FieldValue.serverTimestamp(),
+              'status': 'active',
+            });
+
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ScannerScreen(
+                sessionId: sessionRef.id,
+                module: moduleCode,
+                topic: sessionTopic,
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      topicController.dispose();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        title: const Text('Dashboard'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Logout',
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+            },
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Welcome Card
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFF00BCD4), const Color(0xFF00ACC1)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Welcome back,',
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _lecturerName ?? 'Lecturer',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              // Create Session Button
+              SizedBox(
+                width: double.infinity,
+                height: 120,
+                child: ElevatedButton(
+                  onPressed: _createSession,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1D1E33),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      side: const BorderSide(
+                        color: Color(0xFF00BCD4),
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.add_circle_outline,
+                        size: 48,
+                        color: Color(0xFF00BCD4),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'CREATE NEW SESSION',
+                        style: TextStyle(
+                          color: const Color(0xFF00BCD4),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 32),
+
+              _buildModuleFilter(),
+              const SizedBox(height: 32),
+
+              _buildActiveSessionsList(),
+              const SizedBox(height: 32),
+
+              _buildCompletedSessionsList(),
+              const SizedBox(height: 32),
+
+              // Info Card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1D1E33),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'How it works',
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(fontSize: 18),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoRow(
+                      '1',
+                      'Create a new session with module code and topic',
+                    ),
+                    _buildInfoRow('2', 'Scan for nearby students broadcasting'),
+                    _buildInfoRow(
+                      '3',
+                      'System auto-verifies students in database',
+                    ),
+                    _buildInfoRow('4', 'Attendance marked in real-time'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: Color(0xFF00BCD4),
+            ),
+            child: Center(
+              child: Text(
+                number,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: ListView.builder(
-              itemCount: foundStudents.length,
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModuleFilter() {
+    return StreamBuilder<List<Module>>(
+      stream: ModuleService().watchModulesForLecturer(widget.user.uid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
+        
+        final modules = snapshot.data!;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Filter by Module', style: TextStyle(color: Colors.white54, fontSize: 14)),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('All'),
+                    selected: _selectedModuleFilter == null,
+                    onSelected: (selected) {
+                      setState(() => _selectedModuleFilter = null);
+                    },
+                    selectedColor: const Color(0xFF00BCD4),
+                    checkmarkColor: Colors.white,
+                    labelStyle: TextStyle(color: _selectedModuleFilter == null ? Colors.white : Colors.white70),
+                    backgroundColor: const Color(0xFF1D1E33),
+                  ),
+                  const SizedBox(width: 8),
+                  ...modules.map((m) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(m.code),
+                      selected: _selectedModuleFilter == m.code,
+                      onSelected: (selected) {
+                        setState(() => _selectedModuleFilter = selected ? m.code : null);
+                      },
+                      selectedColor: const Color(0xFF00BCD4),
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(color: _selectedModuleFilter == m.code ? Colors.white : Colors.white70),
+                      backgroundColor: const Color(0xFF1D1E33),
+                    ),
+                  )).toList(),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+    );
+  }
+
+  Widget _buildActiveSessionsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.play_circle_fill, color: Colors.greenAccent),
+            const SizedBox(width: 8),
+            Text(
+              'Active Sessions',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: SessionService().getActiveSessionsStream(widget.user.uid),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            var docs = snapshot.data?.docs ?? [];
+            if (_selectedModuleFilter != null) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final code = data['module_code'] ?? data['module'] ?? '';
+                return code == _selectedModuleFilter;
+              }).toList();
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                _selectedModuleFilter != null 
+                  ? 'No active sessions for $_selectedModuleFilter.'
+                  : 'No active sessions. Create one to start!', 
+                style: const TextStyle(color: Colors.white54)
+              );
+            }
+
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: docs.length,
               itemBuilder: (context, index) {
-                var student = foundStudents[index];
+                final data = docs[index].data() as Map<String, dynamic>;
+                final sessionId = docs[index].id;
+                final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
+                final topic = data['session_topic'] ?? data['topic'] ?? '';
+
                 return Card(
-                  margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  color: const Color(0xFF1D1E33),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFF00BCD4), width: 1),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: student['color'].withOpacity(0.2),
-                      child: Icon(Icons.person, color: student['color']),
-                    ),
-                    title: Text(student['id'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-                    subtitle: Text("Signal Strength: ${student['rssi']} dBm"),
-                    trailing: Chip(
-                      label: Text(student['status']),
-                      backgroundColor: student['color'],
-                      labelStyle: TextStyle(color: Colors.white),
-                    ),
+                    title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    subtitle: Text(topic, style: const TextStyle(color: Colors.white70)),
+                    trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00BCD4), size: 16),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ScannerScreen(
+                            sessionId: sessionId,
+                            module: moduleCode,
+                            topic: topic,
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 );
               },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompletedSessionsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.history, color: Colors.white54),
+            const SizedBox(width: 8),
+            Text(
+              'Past Sessions',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: SessionService().getCompletedSessionsStream(widget.user.uid),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            var docs = snapshot.data?.docs ?? [];
+            if (_selectedModuleFilter != null) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final code = data['module_code'] ?? data['module'] ?? '';
+                return code == _selectedModuleFilter;
+              }).toList();
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                _selectedModuleFilter != null
+                  ? 'No past sessions for $_selectedModuleFilter yet.'
+                  : 'No past sessions yet.', 
+                style: const TextStyle(color: Colors.white54)
+              );
+            }
+
+            final displayDocs = docs.take(2).toList();
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: displayDocs.length,
+                  itemBuilder: (context, index) {
+                    final data = displayDocs[index].data() as Map<String, dynamic>;
+                    return PastSessionCard(data: data);
+                  },
+                ),
+                if (docs.length > 2)
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PastSessionsScreen(
+                              lecturerId: widget.user.uid,
+                              moduleFilter: _selectedModuleFilter,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text('VIEW ALL PAST SESSIONS', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// PAST SESSIONS WIDGETS
+// ============================================================================
+
+class PastSessionCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const PastSessionCard({Key? key, required this.data}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
+    final topic = data['session_topic'] ?? data['topic'] ?? '';
+    final studentCount = data['student_count'] ?? 0;
+    
+    DateTime? date;
+    DateTime? startTime;
+    DateTime? endTime;
+    
+    if (data['created_at'] != null) date = (data['created_at'] as Timestamp).toDate();
+    if (data['started_at'] != null) startTime = (data['started_at'] as Timestamp).toDate();
+    if (data['ended_at'] != null) endTime = (data['ended_at'] as Timestamp).toDate();
+    
+    String dateString = date != null ? DateFormat('MMM dd, yyyy').format(date) : 'Unknown Date';
+    String startTimeString = startTime != null ? DateFormat('hh:mm a').format(startTime) : '--';
+    String endTimeString = endTime != null ? DateFormat('hh:mm a').format(endTime) : '--';
+
+    return Card(
+      color: const Color(0xFF1D1E33),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (topic.isNotEmpty) ...[
+              Text(topic, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+            ] else ...[
+              const SizedBox(height: 4),
+            ],
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 12, color: Colors.white54),
+                const SizedBox(width: 4),
+                Text(dateString, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                const SizedBox(width: 12),
+                const Icon(Icons.access_time, size: 12, color: Colors.white54),
+                const SizedBox(width: 4),
+                Text('$startTimeString - $endTimeString', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+              ],
+            ),
+          ],
+        ),
+        trailing: Text('$studentCount students', style: const TextStyle(color: Colors.white70)),
+        isThreeLine: true,
+      ),
+    );
+  }
+}
+
+class PastSessionsScreen extends StatelessWidget {
+  final String lecturerId;
+  final String? moduleFilter;
+  const PastSessionsScreen({Key? key, required this.lecturerId, this.moduleFilter}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('All Past Sessions'),
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: SessionService().getCompletedSessionsStream(lecturerId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              
+              final docs = snapshot.data?.docs ?? [];
+              var filteredDocs = docs;
+              if (moduleFilter != null) {
+                filteredDocs = filteredDocs.where((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  final code = data['module_code'] ?? data['module'] ?? '';
+                  return code == moduleFilter;
+                }).toList();
+              }
+              
+              if (filteredDocs.isEmpty) {
+                return Center(
+                  child: Text(
+                    moduleFilter != null ? 'No past sessions for $moduleFilter.' : 'No past sessions.', 
+                    style: const TextStyle(color: Colors.white54)
+                  )
+                );
+              }
+              
+              return ListView.builder(
+                itemCount: filteredDocs.length,
+                itemBuilder: (context, index) {
+                  final data = filteredDocs[index].data() as Map<String, dynamic>;
+                  return PastSessionCard(data: data);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// SCANNER SCREEN - Real-time BLE Scanner with UUID filtering
+// ============================================================================
+
+class ScannerScreen extends StatefulWidget {
+  final String sessionId;
+  final String module;
+  final String topic;
+
+  const ScannerScreen({
+    Key? key,
+    required this.sessionId,
+    required this.module,
+    required this.topic,
+  }) : super(key: key);
+
+  @override
+  State<ScannerScreen> createState() => _ScannerScreenState();
+}
+
+class _ScannerScreenState extends State<ScannerScreen> {
+  bool _isScanning = false;
+  final Map<String, StudentAttendance> _detectedStudents = {};
+  int _devicesFound = 0;
+  int _scansPerformed = 0;
+  final Set<String> _processedRegNosInCurrentScan = {};
+  Set<String>? _enrolledRegNos;
+
+  static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchEnrolledStudents();
+    _hydrateState().then((_) {
+      if (_scansPerformed == 0 && !_isScanning) {
+        _startScanning();
+      }
+    });
+  }
+
+  Future<void> _fetchEnrolledStudents() async {
+    try {
+      final moduleKey = widget.module.toUpperCase().trim();
+      final snap = await FirebaseFirestore.instance
+          .collection('students')
+          .where('enrolled_module_ids', arrayContains: moduleKey)
+          .get();
+      
+      final regNos = <String>{};
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        if (data['reg_no'] != null) {
+          regNos.add(data['reg_no'].toString().trim());
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _enrolledRegNos = regNos;
+        });
+      }
+      print("🎓 Fetched ${regNos.length} enrolled students for module $moduleKey");
+    } catch (e) {
+      print("❌ Error fetching enrolled students: $e");
+    }
+  }
+
+  Future<void> _hydrateState() async {
+    try {
+      final sessionSnap = await FirebaseFirestore.instance.collection('active_sessions').doc(widget.sessionId).get();
+      if (sessionSnap.exists) {
+        final data = sessionSnap.data() as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _scansPerformed = data['scans_performed'] ?? 0;
+          });
+        }
+      }
+
+      final recordsSnap = await FirebaseFirestore.instance.collection('attendance_records')
+          .where('session_id', isEqualTo: widget.sessionId)
+          .get();
+      
+      final Map<String, StudentAttendance> restoredStudents = {};
+      for (var doc in recordsSnap.docs) {
+        final data = doc.data();
+        final regNo = (data['reg_no'] ?? '').toString();
+        final studentId = (data['student_id'] ?? '').toString();
+        final rssi = data['rssi'] as int? ?? -60;
+        final scanCount = data['scan_count'] as int? ?? 1;
+        
+        DateTime timestamp;
+        if (data['marked_at'] != null) {
+          timestamp = (data['marked_at'] as Timestamp).toDate();
+        } else if (data['timestamp'] != null) {
+          timestamp = (data['timestamp'] as Timestamp).toDate();
+        } else {
+          timestamp = DateTime.now();
+        }
+
+        if (regNo.isNotEmpty && studentId.isNotEmpty) {
+          restoredStudents[regNo] = StudentAttendance(
+            regNo: regNo,
+            studentId: studentId,
+            rssi: rssi,
+            timestamp: timestamp,
+            isVerified: true,
+            scan_count: scanCount,
+          );
+        }
+      }
+      
+      if (mounted && restoredStudents.isNotEmpty) {
+        setState(() {
+          _detectedStudents.addAll(restoredStudents);
+        });
+      }
+    } catch (e) {
+      print("Error hydrating state: $e");
+    }
+  }
+
+  Future<bool> _requestPermissions() async {
+    try {
+      final permissions = [
+        Permission.bluetoothScan,
+        Permission.bluetoothConnect,
+        Permission.location,
+      ];
+
+      for (var permission in permissions) {
+        final status = await permission.request();
+        if (!status.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Permission denied: ${permission.toString().split('.').last}',
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return false;
+        }
+      }
+      return true;
+    } catch (e) {
+      print('❌ Permission error: $e');
+      return false;
+    }
+  }
+
+  Future<void> _startScanning() async {
+    final hasPermissions = await _requestPermissions();
+    if (!hasPermissions) return;
+
+    final isSupported = await FlutterBluePlus.isSupported;
+    if (!isSupported) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bluetooth not supported on this device'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
+      try {
+        await FlutterBluePlus.turnOn();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please turn on Bluetooth to start scanning'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    setState(() {
+      _isScanning = true;
+      _processedRegNosInCurrentScan.clear();
+    });
+
+    print("========================================");
+    print("🔵 LECTURER APP: Starting BLE Scan");
+    print("🎯 Target Service UUID: $SERVICE_UUID");
+    print("========================================");
+
+    try {
+      // Start scan with UUID filter
+      await FlutterBluePlus.startScan(
+        withServices: [Guid(SERVICE_UUID)],
+        timeout: const Duration(minutes: 30),
+        androidUsesFineLocation: true,
+      );
+
+      // Listen to scan results
+      FlutterBluePlus.scanResults.listen((results) {
+        for (ScanResult result in results) {
+          _processScanResult(result);
+        }
+      });
+    } catch (e) {
+      print('❌ Scan error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Scan error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _processScanResult(ScanResult result) async {
+    _devicesFound++;
+
+    final deviceName = result.device.platformName;
+    final deviceId = result.device.remoteId.toString();
+
+    print("\n========================================");
+    print("📱 DEVICE DETECTED #$_devicesFound");
+    print("========================================");
+    print("📋 Device Info:");
+    print("   Name: $deviceName");
+    print("   ID: $deviceId");
+    print("   RSSI: ${result.rssi} dBm");
+    print("📡 Advertised Services:");
+    for (var uuid in result.advertisementData.serviceUuids) {
+      print("   - $uuid");
+    }
+
+    // Extract registration number from manufacturer data (SECURE METHOD)
+    // flutter_blue_plus returns Map<int, List<int>> where key is company ID
+    final advertisementData = result.advertisementData;
+    final Map<int, List<int>> manufacturerDataMap =
+        advertisementData.manufacturerData;
+
+    print("🔒 Checking manufacturer data...");
+    print("   Available Company IDs: ${manufacturerDataMap.keys.toList()}");
+
+    if (!manufacturerDataMap.containsKey(0xFFFF)) {
+      print(
+        "⚠️  Device missing manufacturer data with Company ID 0xFFFF - SKIPPED",
+      );
+      print("   This device is not broadcasting with secure method");
+      print("========================================\n");
+      return;
+    }
+
+    // Get manufacturer data for company ID 0xFFFF
+    // Note: flutter_blue_plus automatically parses the company ID from the packet
+    // The data here is ONLY the payload bytes (company ID already stripped)
+    final List<int> regNoBytesList = manufacturerDataMap[0xFFFF]!;
+
+    print("📦 Manufacturer Data Found:");
+    print("   Company ID: 0xFFFF (Unreserved)");
+    print("   Data Length: ${regNoBytesList.length} bytes");
+    print("   Raw Bytes: $regNoBytesList");
+
+    String regNo;
+    try {
+      regNo = utf8.decode(regNoBytesList).replaceAll('\x00', '').trim();
+      print("✅ Decoded RegNo: $regNo");
+    } catch (e) {
+      print("❌ Failed to decode manufacturer data: $e");
+      print("========================================\n");
+      return;
+    }
+
+    print("🎓 Processing Student:");
+    print("   RegNo: $regNo");
+
+    // Check if already processed in THIS scan
+    if (_processedRegNosInCurrentScan.contains(regNo)) {
+      print("⏭️  Student already marked in this scan - SKIPPED");
+      print("========================================\n");
+      return;
+    }
+    
+    // Filter unregistered students
+    if (_enrolledRegNos == null) {
+      print("⏳ Still loading enrolled students list - ignoring scan for now");
+      return;
+    }
+    
+    if (!_enrolledRegNos!.contains(regNo)) {
+      print("⛔ Unregistered student detected - ignoring: $regNo");
+      print("========================================\n");
+      return;
+    }
+    
+    _processedRegNosInCurrentScan.add(regNo);
+
+    // Validate RegNo format
+    final regNoLower = regNo.toLowerCase();
+    if (!regNoLower.startsWith('eg') || regNo.length < 5) {
+      print("❌ Invalid RegNo format - SKIPPED");
+      print("========================================\n");
+      return;
+    }
+
+    try {
+      // Query Firestore to verify student
+      print("🔍 Querying Firebase for student: $regNo");
+
+      final studentQuery = await FirebaseFirestore.instance
+          .collection('students')
+          .where('reg_no', isEqualTo: regNo)
+          .limit(1)
+          .get();
+
+      if (studentQuery.docs.isEmpty) {
+        print("❌ Student not found in database");
+        print("========================================\n");
+
+        setState(() {
+          _detectedStudents[regNo] = StudentAttendance(
+            regNo: regNo,
+            studentId: 'unknown',
+            rssi: result.rssi,
+            timestamp: DateTime.now(),
+            isVerified: false,
+          );
+        });
+        return;
+      }
+
+      final studentDoc = studentQuery.docs.first;
+      final studentId = studentDoc.id;
+
+      print("✅ Student verified in Firebase:");
+      print("   Name: ${studentDoc.data()['email']}");
+      print("   Student ID: $studentId");
+
+      // Mark attendance in Firestore
+      print("💾 Marking attendance...");
+
+      await SessionService().markAttendance(
+        sessionId: widget.sessionId,
+        studentId: studentId,
+        regNo: regNo,
+        rssi: result.rssi,
+      );
+
+      print("✅ Attendance marked successfully!");
+      print("========================================\n");
+
+      setState(() {
+        int newScanCount = 1;
+        if (_detectedStudents.containsKey(regNo)) {
+           newScanCount = (_detectedStudents[regNo]?.scan_count ?? 0) + 1;
+        }
+        _detectedStudents[regNo] = StudentAttendance(
+          regNo: regNo,
+          studentId: studentId,
+          rssi: result.rssi,
+          timestamp: DateTime.now(),
+          isVerified: true,
+          scan_count: newScanCount,
+        );
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ ${regNo.toUpperCase()} marked present'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print("❌ Error processing student: $e");
+      print("========================================\n");
+    }
+  }
+
+  void _stopScanning() {
+    FlutterBluePlus.stopScan();
+    
+    int newScans = _scansPerformed + 1;
+    if (mounted) {
+      setState(() {
+        _isScanning = false;
+        _scansPerformed = newScans;
+      });
+    } else {
+      _isScanning = false;
+      _scansPerformed = newScans;
+    }
+    
+    // Update session document with scans performed
+    FirebaseFirestore.instance
+        .collection('active_sessions')
+        .doc(widget.sessionId)
+        .update({'scans_performed': newScans});
+    print("🔴 Scan stopped (Total scans: $newScans)");
+  }
+
+  Future<void> _endSession() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1D1E33),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('End Session?'),
+        content: const Text('This will mark the session as completed.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('END SESSION'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      if (_isScanning) {
+        _stopScanning();
+      }
+
+      // End session and update module counters atomically.
+      await SessionService().endSession(
+        widget.sessionId,
+        totalStudents: _detectedStudents.length,
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return WillPopScope(
+      onWillPop: () async {
+        if (!_isScanning) return true;
+        
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1D1E33),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Stop Scanning?'),
+            content: const Text('A scan is currently active. Do you want to stop it and save the round before leaving?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('STAY'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('STOP & LEAVE'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldPop == true) {
+          _stopScanning();
+          return true;
+        }
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+        title: const Text('Live Scanner'),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // Session Info Card
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [const Color(0xFF00BCD4), const Color(0xFF00ACC1)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.module,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.topic,
+                    style: const TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'COMPLETED ROUNDS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '$_scansPerformed',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      if (_scansPerformed == 0 && !_isScanning)
+                                        const Text(
+                                          'None yet',
+                                          style: TextStyle(color: Colors.white54, fontSize: 14),
+                                        ),
+                                      ...List.generate(
+                                        _scansPerformed,
+                                        (index) => const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.greenAccent,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      if (_isScanning)
+                                        const Padding(
+                                          padding: EdgeInsets.only(left: 4.0),
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_detectedStudents.length} Students',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Student List
+            Expanded(
+              child: _detectedStudents.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            _isScanning
+                                ? Icons.bluetooth_searching
+                                : Icons.bluetooth_disabled,
+                            size: 80,
+                            color: Colors.white24,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            _isScanning
+                                ? 'Scanning for students...'
+                                : 'Scan stopped',
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: _detectedStudents.length,
+                      itemBuilder: (context, index) {
+                        final student = _detectedStudents.values.elementAt(
+                          index,
+                        );
+                        return _buildStudentCard(student);
+                      },
+                    ),
+            ),
+
+            // Control Buttons
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: const BoxDecoration(
+                color: Color(0xFF1D1E33),
+                border: Border(
+                  top: BorderSide(color: Colors.white12, width: 1),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _isScanning ? _stopScanning : _startScanning,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isScanning
+                            ? Colors.orange
+                            : const Color(0xFF00BCD4),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      icon: Icon(_isScanning ? Icons.stop_circle_outlined : Icons.radar),
+                      label: Text(_isScanning ? 'STOP CURRENT ROUND' : 'START NEW ROUND'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _endSession,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      icon: const Icon(Icons.stop),
+                      label: const Text('END SESSION'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStudentCard(StudentAttendance student) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1D1E33),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: student.isVerified ? const Color(0xFF00BCD4) : Colors.red,
+          width: 2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            student.isVerified ? Icons.check_circle : Icons.error,
+            color: student.isVerified ? Colors.green : Colors.red,
+            size: 32,
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  student.regNo.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                if (student.isVerified)
+                  Builder(
+                    builder: (context) {
+                      int targetRounds = _scansPerformed + (_isScanning ? 1 : 0);
+                      if (student.scan_count > targetRounds) {
+                        targetRounds = student.scan_count;
+                      }
+                      int missingCount = targetRounds - student.scan_count;
+                      
+                      return Row(
+                        children: [
+                          ...List.generate(
+                            student.scan_count,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 2.0),
+                              child: Icon(Icons.star, color: Colors.amber, size: 14),
+                            ),
+                          ),
+                          ...List.generate(
+                            missingCount,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 2.0),
+                              child: Icon(Icons.star_border, color: Colors.white30, size: 14),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatTime(student.timestamp),
+                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                else
+                  const Text(
+                    'Unknown Device',
+                    style: TextStyle(color: Colors.red, fontSize: 14),
+                  ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${student.rssi} dBm',
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),
         ],
       ),
     );
   }
+
+  String _formatTime(DateTime time) {
+    return '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    if (_isScanning) {
+      _stopScanning();
+    }
+    super.dispose();
+  }
+}
+
+// ============================================================================
+// DATA MODEL
+// ============================================================================
+
+class StudentAttendance {
+  final String regNo;
+  final String studentId;
+  final int rssi;
+  final DateTime timestamp;
+  final bool isVerified;
+  int scan_count;
+
+  StudentAttendance({
+    required this.regNo,
+    required this.studentId,
+    required this.rssi,
+    required this.timestamp,
+    required this.isVerified,
+    this.scan_count = 1,
+  });
 }
