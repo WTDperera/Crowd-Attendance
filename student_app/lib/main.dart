@@ -385,7 +385,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         Icons.email_outlined,
                         color: Color(0xFF00BCD4),
                       ),
-                      hintText: 'eg123456@sjp.ac.lk',
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -901,16 +900,19 @@ class _BroadcastScreenState extends State<BroadcastScreen>
                     const SizedBox(height: 16),
                     _buildInfoRow(
                       Icons.bluetooth,
-                      'Broadcasting via Bluetooth',
+                      'Turn ON Bluetooth when lecturer starts scanning',
                     ),
                     _buildInfoRow(
-                      Icons.security,
-                      'Service UUID: $SERVICE_UUID',
+                      Icons.radar,
+                      'Stay within classroom range (~10–30 meters)',
                     ),
-                    _buildInfoRow(Icons.radar, 'Range: ~10-30 meters'),
                     _buildInfoRow(
-                      Icons.person,
+                      Icons.check_circle_outline,
                       'Attendance auto-marked when detected',
+                    ),
+                    _buildInfoRow(
+                      Icons.schedule,
+                      'Session duration & records saved to profile',
                     ),
                   ],
                 ),

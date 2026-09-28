@@ -366,7 +366,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         Icons.email_outlined,
                         color: Color(0xFF00BCD4),
                       ),
-                      hintText: 'lecturer@sjp.ac.lk',
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -966,14 +965,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 16),
                     _buildInfoRow(
                       '1',
-                      'Create a new session with module code and topic',
+                      'Create a new session with module, topic & class duration',
                     ),
-                    _buildInfoRow('2', 'Scan for nearby students broadcasting'),
+                    _buildInfoRow(
+                      '2',
+                      'Announce & scan for nearby students broadcasting',
+                    ),
                     _buildInfoRow(
                       '3',
                       'System auto-verifies students in database',
                     ),
-                    _buildInfoRow('4', 'Attendance marked in real-time'),
+                    _buildInfoRow(
+                      '4',
+                      'Attendance & session duration recorded in real-time',
+                    ),
                   ],
                 ),
               ),
