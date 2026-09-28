@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
 
 import '../models/module_stats.dart';
 
@@ -69,6 +70,7 @@ class AttendanceStatsService {
 
     final presentTimeBySessionKey = <String, DateTime>{};
     final absentTimeBySessionKey = <String, DateTime>{};
+    final durationBySessionKey = <String, String>{};
 
     String sessionKeyFrom(dynamic data, String docId) {
       if (data is Map<String, dynamic>) {
@@ -103,6 +105,36 @@ class AttendanceStatsService {
 
           if (!presentTimeBySessionKey.containsKey(key) && ts is Timestamp) {
             presentTimeBySessionKey[key] = ts.toDate();
+          }
+
+          // Collect session duration info from the attendance record itself.
+          if (!durationBySessionKey.containsKey(key)) {
+            final durFormatted = data['duration_formatted'] as String?;
+            if (durFormatted != null && durFormatted.isNotEmpty) {
+              durationBySessionKey[key] = durFormatted;
+            } else {
+              // Derive from start_time / end_time stored on the record.
+              final startRaw = data['start_time'];
+              final endRaw = data['end_time'];
+              if (startRaw is Timestamp && endRaw is Timestamp) {
+                final s = startRaw.toDate();
+                final e = endRaw.toDate();
+                final diffMins = e.difference(s).inMinutes;
+                final hrs = diffMins ~/ 60;
+                final mins = diffMins % 60;
+                String durText;
+                if (hrs > 0 && mins > 0) {
+                  durText = '${hrs}h ${mins}m';
+                } else if (hrs > 0) {
+                  durText = '$hrs hr${hrs > 1 ? "s" : ""}';
+                } else {
+                  durText = '$mins mins';
+                }
+                final startStr = DateFormat('hh:mm a').format(s);
+                final endStr = DateFormat('hh:mm a').format(e);
+                durationBySessionKey[key] = '$startStr - $endStr ($durText)';
+              }
+            }
           }
         }
       } catch (_) {
@@ -168,12 +200,23 @@ class AttendanceStatsService {
     }
     absentRecordDates.sort((a, b) => a.compareTo(b));
 
+    // Build Map<DateTime, String> for recordDurations (keyed by the record DateTime).
+    final recordDurations = <DateTime, String>{};
+    for (final key in effectivePresent) {
+      final dt = presentTimeBySessionKey[key];
+      final dur = durationBySessionKey[key];
+      if (dt != null && dur != null) {
+        recordDurations[dt] = dur;
+      }
+    }
+
     return _ModuleAttendanceEvidence(
       presentCount: effectivePresent.length,
       presentTimes: presentTimes,
       totalSessionsSeen: allSessionKeys.length,
       presentRecordDates: effectivePresentRecordDates,
       absentRecordDates: absentRecordDates,
+      recordDurations: recordDurations,
     );
   }
 
@@ -342,6 +385,7 @@ class AttendanceStatsService {
         absentDates: absentDates,
         presentRecordDates: evidence.presentRecordDates,
         absentRecordDates: evidence.absentRecordDates,
+        recordDurations: evidence.recordDurations,
         presentCount: presentCount,
         totalModuleSessions: totalSessions,
       );
@@ -461,6 +505,7 @@ class AttendanceStatsService {
       absentDates: absentDates,
       presentRecordDates: evidence.presentRecordDates,
       absentRecordDates: evidence.absentRecordDates,
+      recordDurations: evidence.recordDurations,
       presentCount: presentCount,
       totalModuleSessions: totalSessions,
     );
@@ -473,6 +518,7 @@ class _ModuleAttendanceEvidence {
   final int totalSessionsSeen;
   final List<DateTime> presentRecordDates;
   final List<DateTime> absentRecordDates;
+  final Map<DateTime, String> recordDurations;
 
   const _ModuleAttendanceEvidence({
     required this.presentCount,
@@ -480,5 +526,6 @@ class _ModuleAttendanceEvidence {
     required this.totalSessionsSeen,
     required this.presentRecordDates,
     required this.absentRecordDates,
+    this.recordDurations = const <DateTime, String>{},
   });
 }

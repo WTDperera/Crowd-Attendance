@@ -49,6 +49,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  TimeOfDay _startTime = TimeOfDay.now();
+  TimeOfDay _endTime = TimeOfDay(
+    hour: (TimeOfDay.now().hour + 2) % 24,
+    minute: TimeOfDay.now().minute,
+  );
+
+  String _calculateDurationText(TimeOfDay start, TimeOfDay end) {
+    int diffMinutes = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
+    if (diffMinutes < 0) diffMinutes += 24 * 60;
+    final hrs = diffMinutes ~/ 60;
+    final mins = diffMinutes % 60;
+    if (hrs > 0 && mins > 0) return '${hrs}h ${mins}m';
+    if (hrs > 0) return '$hrs hr${hrs > 1 ? "s" : ""}';
+    return '$mins mins';
+  }
+
   Future<void> _createSession() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedModule == null) return;
@@ -56,10 +72,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final now = DateTime.now();
+      final startDateTime = DateTime(now.year, now.month, now.day, _startTime.hour, _startTime.minute);
+      var endDateTime = DateTime(now.year, now.month, now.day, _endTime.hour, _endTime.minute);
+      if (endDateTime.isBefore(startDateTime)) {
+        endDateTime = endDateTime.add(const Duration(days: 1));
+      }
+
       final sessionId = await _sessionService.createSession(
         moduleCode: _selectedModule!.code.trim(),
         moduleId: _selectedModule!.id,
         sessionTopic: _sessionTopicController.text.trim(),
+        startTime: startDateTime,
+        endTime: endDateTime,
       );
 
       if (!mounted) return;
@@ -93,188 +118,289 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _showCreateSessionDialog() async {
     return showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Icon(Icons.add_circle, color: Colors.cyan.shade400),
-            const SizedBox(width: 12),
-            const Text('Create Session', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-        content: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1D1E33),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
             children: [
-              Builder(
-                builder: (context) {
-                  final user = _authService.currentUser;
-                  if (user == null) {
-                    return Text(
-                      'User not authenticated',
-                      style: TextStyle(color: Colors.red.shade300),
-                    );
-                  }
-
-                  return StreamBuilder<List<Module>>(
-                    stream: _moduleService.watchModulesForLecturer(user.uid),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: CircularProgressIndicator(),
-                          ),
-                        );
-                      }
-
-                      if (snapshot.hasError) {
+              Icon(Icons.add_circle, color: Colors.cyan.shade400),
+              const SizedBox(width: 12),
+              const Text('Create Session', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: Form(
+            key: _formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Builder(
+                    builder: (context) {
+                      final user = _authService.currentUser;
+                      if (user == null) {
                         return Text(
-                          snapshot.error.toString(),
+                          'User not authenticated',
                           style: TextStyle(color: Colors.red.shade300),
                         );
                       }
 
-                      final modules = snapshot.data ?? <Module>[];
-                      if (modules.isEmpty) {
-                        return Text(
-                          'No modules available.',
-                          style: TextStyle(color: Colors.grey.shade400),
-                        );
-                      }
+                      return StreamBuilder<List<Module>>(
+                        stream: _moduleService.watchModulesForLecturer(user.uid),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(vertical: 12),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
 
-                      final selectedStillExists =
-                          _selectedModuleId != null &&
-                          modules.any((m) => m.id == _selectedModuleId);
-                      if (!selectedStillExists && _selectedModuleId != null) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (!mounted) return;
-                          setState(() {
-                            _selectedModuleId = null;
-                            _selectedModule = null;
-                          });
-                        });
-                      }
+                          if (snapshot.hasError) {
+                            return Text(
+                              snapshot.error.toString(),
+                              style: TextStyle(color: Colors.red.shade300),
+                            );
+                          }
 
-                      return DropdownButtonFormField<String>(
-                        key: ValueKey<String?>(_selectedModuleId),
-                        initialValue: _selectedModuleId,
-                        dropdownColor: const Color(0xFF1D1E33),
-                        iconEnabledColor: Colors.cyan.shade400,
-                        style: const TextStyle(color: Colors.white),
-                        decoration: InputDecoration(
-                          labelText: 'Module',
-                          labelStyle: TextStyle(color: Colors.grey.shade400),
-                          hintText: 'Select module',
-                          hintStyle: TextStyle(color: Colors.grey.shade600),
-                          prefixIcon: Icon(
-                            Icons.book,
-                            color: Colors.cyan.shade400,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.cyan.withOpacity(0.3),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.cyan.shade400,
-                              width: 2,
-                            ),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(color: Colors.red.shade400),
-                          ),
-                          focusedErrorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide(
-                              color: Colors.red.shade400,
-                              width: 2,
-                            ),
-                          ),
-                        ),
-                        items: modules
-                            .map(
-                              (m) => DropdownMenuItem<String>(
-                                value: m.id,
-                                child: Text(
-                                  '${m.code} — ${m.name}',
-                                  overflow: TextOverflow.ellipsis,
+                          final modules = snapshot.data ?? <Module>[];
+                          if (modules.isEmpty) {
+                            return Text(
+                              'No modules available.',
+                              style: TextStyle(color: Colors.grey.shade400),
+                            );
+                          }
+
+                          final selectedStillExists =
+                              _selectedModuleId != null &&
+                              modules.any((m) => m.id == _selectedModuleId);
+                          if (!selectedStillExists && _selectedModuleId != null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (!mounted) return;
+                              setDialogState(() {
+                                _selectedModuleId = null;
+                                _selectedModule = null;
+                              });
+                            });
+                          }
+
+                          return DropdownButtonFormField<String>(
+                            key: ValueKey<String?>(_selectedModuleId),
+                            initialValue: _selectedModuleId,
+                            dropdownColor: const Color(0xFF1D1E33),
+                            iconEnabledColor: Colors.cyan.shade400,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: InputDecoration(
+                              labelText: 'Module',
+                              labelStyle: TextStyle(color: Colors.grey.shade400),
+                              hintText: 'Select module',
+                              hintStyle: TextStyle(color: Colors.grey.shade600),
+                              prefixIcon: Icon(
+                                Icons.book,
+                                color: Colors.cyan.shade400,
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.cyan.withOpacity(0.3),
                                 ),
                               ),
-                            )
-                            .toList(growable: false),
-                        onChanged: _isLoading
-                            ? null
-                            : (value) {
-                                setState(() {
-                                  _selectedModuleId = value;
-                                  _selectedModule = value == null
-                                      ? null
-                                      : modules.firstWhere(
-                                          (m) => m.id == value,
-                                        );
-                                });
-                              },
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Select module';
-                          }
-                          return null;
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.cyan.shade400,
+                                  width: 2,
+                                ),
+                              ),
+                              errorBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.red.shade400),
+                              ),
+                              focusedErrorBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.red.shade400,
+                                  width: 2,
+                                ),
+                              ),
+                            ),
+                            items: modules
+                                .map(
+                                  (m) => DropdownMenuItem<String>(
+                                    value: m.id,
+                                    child: Text(
+                                      '${m.code} — ${m.name}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: _isLoading
+                                ? null
+                                : (value) {
+                                    setDialogState(() {
+                                      _selectedModuleId = value;
+                                      _selectedModule = value == null
+                                          ? null
+                                          : modules.firstWhere(
+                                              (m) => m.id == value,
+                                            );
+                                    });
+                                  },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select module';
+                              }
+                              return null;
+                            },
+                          );
                         },
                       );
                     },
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _sessionTopicController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Session Topic',
-                  labelStyle: TextStyle(color: Colors.grey.shade400),
-                  hintText: 'e.g., Lecture 05 - Design Patterns',
-                  hintStyle: TextStyle(color: Colors.grey.shade600),
-                  prefixIcon: Icon(Icons.topic, color: Colors.cyan.shade400),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.cyan.withOpacity(0.3)),
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.cyan.shade400,
-                      width: 2,
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _sessionTopicController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: 'Session Topic',
+                      labelStyle: TextStyle(color: Colors.grey.shade400),
+                      hintText: 'e.g., Lecture 05 - Design Patterns',
+                      hintStyle: TextStyle(color: Colors.grey.shade600),
+                      prefixIcon: Icon(Icons.topic, color: Colors.cyan.shade400),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.cyan.withOpacity(0.3)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.cyan.shade400,
+                          width: 2,
+                        ),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.red.shade400),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.red.shade400,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Enter session topic';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: _startTime,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                _startTime = picked;
+                                final sMin = _startTime.hour * 60 + _startTime.minute;
+                                final eMin = _endTime.hour * 60 + _endTime.minute;
+                                if (eMin <= sMin) {
+                                  _endTime = TimeOfDay(
+                                    hour: (_startTime.hour + 2) % 24,
+                                    minute: _startTime.minute,
+                                  );
+                                }
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'Start Time',
+                              labelStyle: TextStyle(color: Colors.grey.shade400),
+                              prefixIcon: Icon(Icons.access_time, color: Colors.cyan.shade400),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.cyan.withOpacity(0.3)),
+                              ),
+                            ),
+                            child: Text(
+                              _startTime.format(context),
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: _endTime,
+                            );
+                            if (picked != null) {
+                              setDialogState(() {
+                                _endTime = picked;
+                              });
+                            }
+                          },
+                          child: InputDecorator(
+                            decoration: InputDecoration(
+                              labelText: 'End Time',
+                              labelStyle: TextStyle(color: Colors.grey.shade400),
+                              prefixIcon: Icon(Icons.timer_outlined, color: Colors.cyan.shade400),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.cyan.withOpacity(0.3)),
+                              ),
+                            ),
+                            child: Text(
+                              _endTime.format(context),
+                              style: const TextStyle(color: Colors.white, fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.cyan.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.cyan.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.timelapse, size: 14, color: Colors.cyan.shade300),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Duration: ${_calculateDurationText(_startTime, _endTime)}',
+                          style: TextStyle(
+                            color: Colors.cyan.shade300,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.red.shade400),
-                  ),
-                  focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: Colors.red.shade400,
-                      width: 2,
-                    ),
-                  ),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Enter session topic';
-                  }
-                  return null;
-                },
+                ],
               ),
-            ],
+            ),
           ),
-        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
