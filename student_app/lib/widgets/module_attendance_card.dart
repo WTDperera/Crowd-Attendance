@@ -194,10 +194,28 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
           ...dates.map((d) {
             final local = d.toLocal();
             final dateText = localizations.formatFullDate(local);
-            final timeText = localizations.formatTimeOfDay(
-              TimeOfDay.fromDateTime(local),
-              alwaysUse24HourFormat: always24h,
-            );
+            String? dur = widget.stats.recordDurations[d];
+            if (dur == null) {
+              for (final entry in widget.stats.recordDurations.entries) {
+                if (entry.key.difference(d).inMinutes.abs() < 2) {
+                  dur = entry.value;
+                  break;
+                }
+              }
+            }
+            if (dur == null) {
+              final end = local.add(const Duration(hours: 2));
+              final startStr = localizations.formatTimeOfDay(
+                TimeOfDay.fromDateTime(local),
+                alwaysUse24HourFormat: always24h,
+              );
+              final endStr = localizations.formatTimeOfDay(
+                TimeOfDay.fromDateTime(end),
+                alwaysUse24HourFormat: always24h,
+              );
+              dur = '$startStr - $endStr (2 hrs)';
+            }
+
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
@@ -206,7 +224,7 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      '$dateText • $timeText',
+                      '$dateText • $dur',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),

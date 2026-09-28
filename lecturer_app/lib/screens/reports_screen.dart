@@ -109,14 +109,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildSessionCard(DocumentSnapshot session) {
-    String className = session.get('class_name') ?? 'Unknown Class';
-    int studentCount = session.get('student_count') ?? 0;
-    Timestamp? startTime = session.get('start_time');
-    String status = session.get('status') ?? 'Completed';
+    final sessionData = session.data() as Map<String, dynamic>? ?? {};
+    String className = sessionData['class_name'] ?? sessionData['module_code'] ?? sessionData['module'] ?? 'Unknown Class';
+    int studentCount = ((sessionData['student_count'] ?? 0) as num).toInt().clamp(0, 1 << 30);
+    Timestamp? startTime = sessionData['start_time'] ?? sessionData['started_at'] ?? sessionData['created_at'];
+    Timestamp? endTime = sessionData['end_time'] ?? sessionData['ended_at'];
+    String status = sessionData['status'] ?? 'Completed';
     
     DateTime date = startTime != null ? startTime.toDate() : DateTime.now();
     String formattedDate = DateFormat('MMMM dd, yyyy').format(date);
-    String formattedTime = DateFormat('hh:mm a').format(date);
+    String formattedTime = sessionData['duration_formatted'] ?? 
+      (startTime != null && endTime != null
+        ? '${DateFormat('hh:mm a').format(startTime.toDate())} - ${DateFormat('hh:mm a').format(endTime.toDate())}'
+        : DateFormat('hh:mm a').format(date));
 
     return GestureDetector(
       onTap: () {
@@ -234,11 +239,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         }
 
         var session = sessionSnapshot.data!;
-        String className = session.get('class_name') ?? 'Unknown Class';
-        Timestamp? startTime = session.get('start_time');
+        final sessionData = session.data() as Map<String, dynamic>? ?? {};
+        String className = sessionData['class_name'] ?? sessionData['module_code'] ?? sessionData['module'] ?? 'Unknown Class';
+        Timestamp? startTime = sessionData['start_time'] ?? sessionData['started_at'] ?? sessionData['created_at'];
+        Timestamp? endTime = sessionData['end_time'] ?? sessionData['ended_at'];
         DateTime date = startTime != null ? startTime.toDate() : DateTime.now();
         String formattedDate = DateFormat('MMMM dd, yyyy').format(date);
-        String formattedTime = DateFormat('hh:mm a').format(date);
+        String formattedTime = sessionData['duration_formatted'] ?? 
+          (startTime != null && endTime != null
+            ? '${DateFormat('hh:mm a').format(startTime.toDate())} - ${DateFormat('hh:mm a').format(endTime.toDate())}'
+            : DateFormat('hh:mm a').format(date));
 
         return SingleChildScrollView(
           child: Column(
@@ -505,9 +515,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 itemCount: students.length,
                 itemBuilder: (context, index) {
                   var student = students[index];
-                  String regNo = student.get('reg_no');
-                  Timestamp markedAt = student.get('marked_at');
-                  String time = DateFormat('hh:mm a').format(markedAt.toDate());
+                  final studentData = student.data() as Map<String, dynamic>? ?? {};
+                  String regNo = studentData['reg_no'] ?? '';
+                  Timestamp? markedAt = studentData['marked_at'] ?? studentData['timestamp'];
+                  String time = markedAt != null ? DateFormat('hh:mm a').format(markedAt.toDate()) : '--';
+                  String durationDisplay = studentData['duration_formatted'] ?? time;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -535,7 +547,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'Alex Johnson', // Could fetch from student doc
+                                studentData['name'] ?? 'Student',
                                 style: const TextStyle(
                                   fontWeight: FontWeight.bold,
                                   fontSize: 16,
@@ -555,12 +567,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
                             Text(
-                              time,
+                              durationDisplay,
                               style: TextStyle(
-                                color: Colors.grey[600],
+                                color: Colors.grey[700],
                                 fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
+                            if (studentData['duration_formatted'] != null)
+                              Text(
+                                'Marked at $time',
+                                style: TextStyle(
+                                  color: Colors.grey[500],
+                                  fontSize: 11,
+                                ),
+                              ),
                             const SizedBox(height: 4),
                             const Icon(
                               Icons.check_circle,

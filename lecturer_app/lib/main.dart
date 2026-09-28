@@ -527,6 +527,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     String? selectedModuleId;
     Module? selectedModule;
 
+    TimeOfDay startTime = TimeOfDay.now();
+    TimeOfDay endTime = TimeOfDay(
+      hour: (TimeOfDay.now().hour + 2) % 24,
+      minute: TimeOfDay.now().minute,
+    );
+
+    String calculateDurationText(TimeOfDay start, TimeOfDay end) {
+      int diffMinutes = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
+      if (diffMinutes < 0) diffMinutes += 24 * 60;
+      final hrs = diffMinutes ~/ 60;
+      final mins = diffMinutes % 60;
+      if (hrs > 0 && mins > 0) return '${hrs}h ${mins}m';
+      if (hrs > 0) return '$hrs hr${hrs > 1 ? "s" : ""}';
+      return '$mins mins';
+    }
+
     try {
       final result = await showDialog<bool>(
         context: context,
@@ -540,108 +556,198 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: const Text('Create New Session'),
               content: Form(
                 key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    StreamBuilder<List<Module>>(
-                      stream: moduleService.watchModulesForLecturer(
-                        widget.user.uid,
-                      ),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState ==
-                            ConnectionState.waiting) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12),
-                            child: CircularProgressIndicator(),
-                          );
-                        }
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      StreamBuilder<List<Module>>(
+                        stream: moduleService.watchModulesForLecturer(
+                          widget.user.uid,
+                        ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: CircularProgressIndicator(),
+                            );
+                          }
 
-                        if (snapshot.hasError) {
-                          return Text(
-                            snapshot.error.toString(),
-                            style: const TextStyle(color: Colors.redAccent),
-                          );
-                        }
+                          if (snapshot.hasError) {
+                            return Text(
+                              snapshot.error.toString(),
+                              style: const TextStyle(color: Colors.redAccent),
+                            );
+                          }
 
-                        final modules = snapshot.data ?? const <Module>[];
-                        if (modules.isEmpty) {
-                          return const Text(
-                            'No modules available.',
-                            style: TextStyle(color: Colors.white70),
-                          );
-                        }
+                          final modules = snapshot.data ?? const <Module>[];
+                          if (modules.isEmpty) {
+                            return const Text(
+                              'No modules available.',
+                              style: TextStyle(color: Colors.white70),
+                            );
+                          }
 
-                        final stillExists =
-                            selectedModuleId != null &&
-                            modules.any((m) => m.id == selectedModuleId);
-                        if (!stillExists && selectedModuleId != null) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            setDialogState(() {
-                              selectedModuleId = null;
-                              selectedModule = null;
+                          final stillExists =
+                              selectedModuleId != null &&
+                              modules.any((m) => m.id == selectedModuleId);
+                          if (!stillExists && selectedModuleId != null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              setDialogState(() {
+                                selectedModuleId = null;
+                                selectedModule = null;
+                              });
                             });
-                          });
-                        }
+                          }
 
-                        return DropdownButtonFormField<String>(
-                          key: ValueKey<String?>(selectedModuleId),
-                          initialValue: selectedModuleId,
-                          dropdownColor: const Color(0xFF1D1E33),
-                          iconEnabledColor: const Color(0xFF00BCD4),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Module',
-                            hintText: 'Select module',
-                            prefixIcon: Icon(
-                              Icons.book,
-                              color: Color(0xFF00BCD4),
+                          return DropdownButtonFormField<String>(
+                            key: ValueKey<String?>(selectedModuleId),
+                            initialValue: selectedModuleId,
+                            dropdownColor: const Color(0xFF1D1E33),
+                            iconEnabledColor: const Color(0xFF00BCD4),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Module',
+                              hintText: 'Select module',
+                              prefixIcon: Icon(
+                                Icons.book,
+                                color: Color(0xFF00BCD4),
+                              ),
+                            ),
+                            items: modules
+                                .map(
+                                  (m) => DropdownMenuItem<String>(
+                                    value: m.id,
+                                    child: Text(
+                                      '${m.code} — ${m.name}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedModuleId = value;
+                                selectedModule = value == null
+                                    ? null
+                                    : modules.firstWhere((m) => m.id == value);
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select module';
+                              }
+                              return null;
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: topicController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'Session Topic',
+                          hintText: 'e.g., OOP Concepts',
+                          prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter session topic';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: startTime,
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    startTime = picked;
+                                    final sMin = startTime.hour * 60 + startTime.minute;
+                                    final eMin = endTime.hour * 60 + endTime.minute;
+                                    if (eMin <= sMin) {
+                                      endTime = TimeOfDay(
+                                        hour: (startTime.hour + 2) % 24,
+                                        minute: startTime.minute,
+                                      );
+                                    }
+                                  });
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Start Time',
+                                  prefixIcon: Icon(Icons.access_time, color: Color(0xFF00BCD4)),
+                                ),
+                                child: Text(
+                                  startTime.format(context),
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                ),
+                              ),
                             ),
                           ),
-                          items: modules
-                              .map(
-                                (m) => DropdownMenuItem<String>(
-                                  value: m.id,
-                                  child: Text(
-                                    '${m.code} — ${m.name}',
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: endTime,
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    endTime = picked;
+                                  });
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'End Time',
+                                  prefixIcon: Icon(Icons.timer_outlined, color: Color(0xFF00BCD4)),
                                 ),
-                              )
-                              .toList(growable: false),
-                          onChanged: (value) {
-                            setDialogState(() {
-                              selectedModuleId = value;
-                              selectedModule = value == null
-                                  ? null
-                                  : modules.firstWhere((m) => m.id == value);
-                            });
-                          },
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Select module';
-                            }
-                            return null;
-                          },
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: topicController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Session Topic',
-                        hintText: 'e.g., OOP Concepts',
-                        prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
+                                child: Text(
+                                  endTime.format(context),
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Enter session topic';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00BCD4).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.timelapse, size: 14, color: Color(0xFF00BCD4)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Duration: ${calculateDurationText(startTime, endTime)}',
+                              style: const TextStyle(
+                                color: Color(0xFF00BCD4),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -667,6 +773,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final moduleCode = selectedModule!.code.trim().toUpperCase();
         final sessionTopic = topicController.text.trim();
 
+        final now = DateTime.now();
+        final startDateTime = DateTime(now.year, now.month, now.day, startTime.hour, startTime.minute);
+        var endDateTime = DateTime(now.year, now.month, now.day, endTime.hour, endTime.minute);
+        if (endDateTime.isBefore(startDateTime)) {
+          endDateTime = endDateTime.add(const Duration(days: 1));
+        }
+        final durationMins = endDateTime.difference(startDateTime).inMinutes;
+        final formattedDuration = SessionService.formatDurationString(startDateTime, endDateTime);
+        final startStr = DateFormat('hh:mm a').format(startDateTime);
+        final endStr = DateFormat('hh:mm a').format(endDateTime);
+
         // Create session in Firestore
         final sessionRef = await FirebaseFirestore.instance
             .collection('active_sessions')
@@ -680,7 +797,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
               'module_code': moduleCode,
               'session_topic': sessionTopic,
               'created_at': FieldValue.serverTimestamp(),
-              'started_at': FieldValue.serverTimestamp(),
+              'started_at': Timestamp.fromDate(startDateTime),
+              'ended_at': Timestamp.fromDate(endDateTime),
+              'start_time': Timestamp.fromDate(startDateTime),
+              'end_time': Timestamp.fromDate(endDateTime),
+              'duration_minutes': durationMins,
+              'duration_formatted': formattedDuration,
+              'duration_range': '$startStr - $endStr',
               'status': 'active',
             });
 
@@ -997,6 +1120,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
                 final topic = data['session_topic'] ?? data['topic'] ?? '';
 
+                String? durationStr = data['duration_formatted'];
+                if (durationStr == null && data['start_time'] != null && data['end_time'] != null) {
+                  final s = (data['start_time'] as Timestamp).toDate();
+                  final e = (data['end_time'] as Timestamp).toDate();
+                  durationStr = SessionService.formatDurationString(s, e);
+                }
+
                 return Card(
                   color: const Color(0xFF1D1E33),
                   shape: RoundedRectangleBorder(
@@ -1006,7 +1136,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                    subtitle: Text(topic, style: const TextStyle(color: Colors.white70)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (topic.isNotEmpty)
+                          Text(topic, style: const TextStyle(color: Colors.white70)),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time, size: 12, color: Color(0xFF00BCD4)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                durationStr ?? 'Active Session',
+                                style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 11, fontWeight: FontWeight.w500),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                     trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00BCD4), size: 16),
                     onTap: () {
                       Navigator.push(
@@ -1126,19 +1276,35 @@ class PastSessionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
     final topic = data['session_topic'] ?? data['topic'] ?? '';
-    final studentCount = data['student_count'] ?? 0;
+    final studentCount = ((data['student_count'] ?? 0) as num).toInt().clamp(0, 1 << 30);
     
     DateTime? date;
     DateTime? startTime;
     DateTime? endTime;
     
     if (data['created_at'] != null) date = (data['created_at'] as Timestamp).toDate();
-    if (data['started_at'] != null) startTime = (data['started_at'] as Timestamp).toDate();
-    if (data['ended_at'] != null) endTime = (data['ended_at'] as Timestamp).toDate();
+    if (data['start_time'] != null) {
+      startTime = (data['start_time'] as Timestamp).toDate();
+    } else if (data['started_at'] != null) {
+      startTime = (data['started_at'] as Timestamp).toDate();
+    }
+    if (data['end_time'] != null) {
+      endTime = (data['end_time'] as Timestamp).toDate();
+    } else if (data['ended_at'] != null) {
+      endTime = (data['ended_at'] as Timestamp).toDate();
+    }
     
     String dateString = date != null ? DateFormat('MMM dd, yyyy').format(date) : 'Unknown Date';
-    String startTimeString = startTime != null ? DateFormat('hh:mm a').format(startTime) : '--';
-    String endTimeString = endTime != null ? DateFormat('hh:mm a').format(endTime) : '--';
+    String durationDisplay;
+    if (data['duration_formatted'] != null) {
+      durationDisplay = data['duration_formatted'];
+    } else if (startTime != null && endTime != null) {
+      durationDisplay = SessionService.formatDurationString(startTime, endTime);
+    } else {
+      String startTimeString = startTime != null ? DateFormat('hh:mm a').format(startTime) : '--';
+      String endTimeString = endTime != null ? DateFormat('hh:mm a').format(endTime) : '--';
+      durationDisplay = '$startTimeString - $endTimeString';
+    }
 
     return Card(
       color: const Color(0xFF1D1E33),
@@ -1163,7 +1329,13 @@ class PastSessionCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 const Icon(Icons.access_time, size: 12, color: Colors.white54),
                 const SizedBox(width: 4),
-                Text('$startTimeString - $endTimeString', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                Expanded(
+                  child: Text(
+                    durationDisplay,
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
           ],
