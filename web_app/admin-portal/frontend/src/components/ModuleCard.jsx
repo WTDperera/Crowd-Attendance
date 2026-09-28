@@ -10,9 +10,8 @@ function ModuleCard({
 {
   
   
-  const { user , lecturerProfile } = useAuth()
-
-  const lecturerName = lecturerProfile?.fullName
+const { lecturerName: ownerName } = useAuth()
+const lecturerName = module.lecturer_name || ownerName
 
   
   const handleOpen = () => {

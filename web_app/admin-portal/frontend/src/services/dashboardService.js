@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where } from 'firebase/firestore'
+import { collection, getCountFromServer, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase/firebase'
 
 const normalizeModuleId = (value) => {
@@ -113,34 +113,10 @@ export const getTotalModulesCount = async (lecturerId) => {
   return modules.length
 }
 
-// Distinct students enrolled in any module owned by this lecturer.
-export const getTotalStudentsCount = async (lecturerId) => {
-  const modules = await getOwnModules(lecturerId)
-  const ownModuleIds = new Set(modules.map((module) => module.moduleId))
-
-  if (ownModuleIds.size === 0) {
-    return 0
-  }
-
-  const studentsSnapshot = await getDocs(collection(db, 'students'))
-  let count = 0
-
-  studentsSnapshot.docs.forEach((studentDoc) => {
-    const data = studentDoc.data() || {}
-    const enrolledModuleIds = Array.isArray(data.enrolled_module_ids)
-      ? data.enrolled_module_ids
-      : []
-
-    const isEnrolledInOwnModule = enrolledModuleIds.some((moduleId) =>
-      ownModuleIds.has(normalizeModuleId(moduleId))
-    )
-
-    if (isEnrolledInOwnModule) {
-      count += 1
-    }
-  })
-
-  return count
+// Total number of documents in the students collection.
+export const getTotalStudentsCount = async () => {
+  const snapshot = await getCountFromServer(collection(db, 'students'))
+  return snapshot.data().count
 }
 
 export const getActiveSessionsCount = async (lecturerId) => {
