@@ -12,9 +12,9 @@ import {
 
 function ModulesPage() {
   const navigate = useNavigate()
-  const { user, lecturerProfile } = useAuth()
+  const { user, lecturerName } = useAuth()
   const lecturerId = user?.uid || ''
-  const lecturerName = lecturerProfile?.fullName || ''
+  //const { user,  } = useAuth()
   const [modules, setModules] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')

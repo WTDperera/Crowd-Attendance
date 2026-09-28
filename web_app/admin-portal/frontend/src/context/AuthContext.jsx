@@ -61,18 +61,26 @@ export function AuthProvider({ children }) {
   const logout = () => signOut(auth)
   const clearAccessDeniedMessage = () => setAccessDeniedMessage('')
 
-  const value = useMemo(
-    () => ({
-      user,
-      lecturerProfile,
-      isAuthed: Boolean(user),
-      authLoading,
-      logout,
-      accessDeniedMessage,
-      clearAccessDeniedMessage,
-    }),
-    [user, lecturerProfile, authLoading, accessDeniedMessage]
-  )
+  const lecturerName =
+  lecturerProfile?.fullName ||
+  lecturerProfile?.name ||
+  user?.displayName ||
+  user?.email?.split('@')[0] ||
+  ''
+
+const value = useMemo(
+  () => ({
+    user,
+    lecturerProfile,
+    lecturerName,          // <-- new
+    isAuthed: Boolean(user),
+    authLoading,
+    logout,
+    accessDeniedMessage,
+    clearAccessDeniedMessage,
+  }),
+  [user, lecturerProfile, lecturerName, authLoading, accessDeniedMessage]
+)
 
   return <AuthContext.Provider value={value}>
     {children}
