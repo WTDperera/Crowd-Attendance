@@ -102,6 +102,7 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Login failed after password check:', error.code, error.message);
     return res
       .status(500)
       .json({ message: 'Unable to complete sign-in right now.' });

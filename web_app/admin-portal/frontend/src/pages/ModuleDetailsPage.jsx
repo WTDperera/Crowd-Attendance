@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext.jsx'
 function ModuleDetailsPage() {
   const { moduleId } = useParams()
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, lecturerProfile } = useAuth()
   const lecturerId = user?.uid || ''
   const [moduleData, setModuleData] = useState(null)
   const [students, setStudents] = useState([])
@@ -20,6 +20,13 @@ function ModuleDetailsPage() {
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState({ type: '', text: '' })
   const moduleKey = decodeURIComponent(moduleId || '').trim().toUpperCase()
+  
+const lecturerName =
+  lecturerProfile?.fullName ||
+  lecturerProfile?.name ||
+  user?.displayName ||
+  user?.email?.split('@')[0] ||
+  ''
 
   const getCount = (student, prefix, key) => {
     const mapVal = student?.[prefix]?.[key]
@@ -176,39 +183,6 @@ function ModuleDetailsPage() {
 
   return (
     <div className="dashboard-grid">
-      <section className="card">
-        <div className="card-header row">
-          <div>
-            <h4>Debug</h4>
-            <span className="helper-text">Temporary diagnostics for attendance.</span>
-          </div>
-        </div>
-        <p className="helper-text">moduleKey: {moduleKey || '—'}</p>
-        <p className="helper-text">
-          attendance_counts keys:{' '}
-          {firstStudent
-            ? Object.keys(firstStudent.attendance_counts || {}).join(', ') || '—'
-            : '—'}
-        </p>
-        <p className="helper-text">
-          attendance_counts.{moduleKey}:{' '}
-          {firstStudentFlatAttendance ?? '—'}
-        </p>
-        <p className="helper-text">
-          absence_counts keys:{' '}
-          {firstStudent
-            ? Object.keys(firstStudent.absence_counts || {}).join(', ') || '—'
-            : '—'}
-        </p>
-        <p className="helper-text">
-          absence_counts.{moduleKey}:{' '}
-          {firstStudentFlatAbsence ?? '—'}
-        </p>
-        <pre className="code-block">
-          {firstStudent ? JSON.stringify(firstStudent, null, 2) : 'No student data'}
-        </pre>
-      </section>
-
       <section className="card module-detail">
         <div className="module-detail-header">
           <div>
@@ -236,7 +210,7 @@ function ModuleDetailsPage() {
         <div className="module-meta-grid">
           <div>
             <p className="meta-label">Lecturer</p>
-            <p className="meta-value">{moduleData.lecturer_id || '—'}</p>
+            <p className="meta-value">{moduleData.lecturer_name || lecturerName || '—'}</p>
           </div>
           <div>
             <p className="meta-label">Total Sessions</p>
