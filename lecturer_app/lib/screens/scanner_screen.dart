@@ -23,11 +23,13 @@ class _ScannerScreenState extends State<ScannerScreen> {
   
   bool _isScanning = false;
   Map<String, dynamic> _sessionData = {};
+  Set<String>? _enrolledRegNos;
   Map<String, Map<String, dynamic>> _detectedStudents = {}; // regNo -> data
   StreamSubscription? _sessionStream;
   StreamSubscription? _attendanceStream;
   StreamSubscription? _scanSubscription;
   
+  Set<String> _scannedInCurrentRound = {}; // Track students scanned in the current active round
   int _devicesFound = 0; // Debug counter
 
   @override
@@ -48,11 +50,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _initializeScanner() async {
     // Listen to session updates
     _sessionStream = _sessionService.getSessionStream(widget.sessionId).listen(
-      (snapshot) {
+      (snapshot) async {
         if (snapshot.exists && mounted) {
+          final data = snapshot.data() as Map<String, dynamic>;
           setState(() {
-            _sessionData = snapshot.data() as Map<String, dynamic>;
+            _sessionData = data;
           });
+          
+          if (_enrolledRegNos == null) {
+            final code = data['module_code'] ?? data['module'] ?? '';
+            if (code.isNotEmpty) {
+              await _fetchEnrolledStudents(code);
+            }
+          }
         }
       },
     );
@@ -73,8 +83,34 @@ class _ScannerScreenState extends State<ScannerScreen> {
       },
     );
 
-    // Auto-start scanning
-    await _startScanning();
+    // Note: removed auto-start scanning. The user must manually start a scan round.
+  }
+
+  Future<void> _fetchEnrolledStudents(String moduleCode) async {
+    try {
+      final moduleKey = moduleCode.toUpperCase().trim();
+      final snap = await _firestore
+          .collection('students')
+          .where('enrolled_module_ids', arrayContains: moduleKey)
+          .get();
+      
+      final regNos = <String>{};
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        if (data['reg_no'] != null) {
+          regNos.add(data['reg_no'].toString().trim());
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _enrolledRegNos = regNos;
+        });
+      }
+      print("🎓 Fetched ${regNos.length} enrolled students for module $moduleKey");
+    } catch (e) {
+      print("❌ Error fetching enrolled students: $e");
+    }
   }
 
   Future<void> _requestPermissions() async {
@@ -101,6 +137,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       setState(() {
         _isScanning = true;
         _devicesFound = 0;
+        _scannedInCurrentRound.clear(); // Reset for the new round
       });
 
       print("========================================");
@@ -148,8 +185,22 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Future<void> _stopScanning() async {
     try {
+      if (!_isScanning) return;
       await FlutterBluePlus.stopScan();
       setState(() => _isScanning = false);
+      
+      // Increment the scans_performed counter in Firestore when a round is stopped
+      await _sessionService.incrementScanRound(widget.sessionId);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Scan Round completed and saved.'),
+            backgroundColor: Colors.blue,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     } catch (e) {
       // Ignore errors when stopping
     }
@@ -207,7 +258,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       String regNo;
       try {
-        regNo = String.fromCharCodes(regNoBytesList);
+        regNo = String.fromCharCodes(regNoBytesList).replaceAll('\x00', '').trim();
       } catch (e) {
         print("❌ Failed to decode manufacturer data: $e");
         print("========================================");
@@ -217,12 +268,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
       print("🎓 Processing Student:");
       print("   RegNo extracted: $regNo");
 
-      // Check if already marked
-      if (_detectedStudents.containsKey(regNo)) {
-        print("⏭️  Already marked - skipping");
+      // Check if already marked IN THIS ROUND
+      if (_scannedInCurrentRound.contains(regNo)) {
+        print("⏭️  Already marked in current round - skipping");
         print("========================================");
         return;
       }
+      
+      // Filter unregistered students
+      if (_enrolledRegNos != null && !_enrolledRegNos!.contains(regNo)) {
+        print("⛔ Unregistered student detected - ignoring: $regNo");
+        print("========================================");
+        return;
+      }
+      
+      _scannedInCurrentRound.add(regNo);
 
       // Verify student exists in Firestore
       print("🔍 Querying Firebase for student: $regNo");
@@ -348,15 +408,6 @@ class _ScannerScreenState extends State<ScannerScreen> {
             fontWeight: FontWeight.bold,
           ),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _isScanning ? Icons.stop_circle : Icons.play_circle,
-              color: _isScanning ? Colors.red : Colors.green,
-            ),
-            onPressed: _isScanning ? _stopScanning : _startScanning,
-          ),
-        ],
       ),
       body: SafeArea(
         child: Column(
@@ -416,21 +467,50 @@ class _ScannerScreenState extends State<ScannerScreen> {
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            Icon(
-                              _isScanning ? Icons.wifi_tethering : Icons.wifi_off,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _isScanning ? 'SCANNING' : 'PAUSED',
-                              style: const TextStyle(
-                                color: Colors.white,
+                            const Text(
+                              'Completed Rounds',
+                              style: TextStyle(
+                                color: Colors.white70,
                                 fontSize: 12,
-                                fontWeight: FontWeight.bold,
                               ),
+                            ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 4,
+                              children: [
+                                if ((_sessionData['scans_performed'] ?? 0) == 0)
+                                  const Text(
+                                    '0',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ...List.generate(
+                                  _sessionData['scans_performed'] ?? 0,
+                                  (index) => const Icon(
+                                    Icons.check_circle,
+                                    color: Colors.greenAccent,
+                                    size: 16,
+                                  ),
+                                ),
+                                if (_isScanning)
+                                  const Padding(
+                                    padding: EdgeInsets.only(left: 4.0),
+                                    child: SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ],
                         ),
@@ -473,6 +553,37 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     ),
                   ),
                 ],
+              ),
+            ),
+            
+            // Scan Controls
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton.icon(
+                  onPressed: _isScanning ? _stopScanning : _startScanning,
+                  icon: Icon(
+                    _isScanning ? Icons.stop_circle_outlined : Icons.radar,
+                    color: Colors.white,
+                  ),
+                  label: Text(
+                    _isScanning ? 'Stop Current Scan Round' : 'Start New Scan Round',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isScanning ? Colors.orange.shade700 : Colors.blue.shade600,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 4,
+                  ),
+                ),
               ),
             ),
 
@@ -550,12 +661,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
                                     ),
                                     if (timestamp != null) ...[
                                       const SizedBox(height: 4),
-                                      Text(
-                                        '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade400,
-                                          fontSize: 12,
-                                        ),
+                                      Row(
+                                        children: [
+                                          ...List.generate(
+                                            data['scan_count'] ?? 1,
+                                            (index) => const Padding(
+                                              padding: EdgeInsets.only(right: 2.0),
+                                              child: Icon(Icons.star, color: Colors.amber, size: 14),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}',
+                                            style: TextStyle(
+                                              color: Colors.grey.shade400,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ],

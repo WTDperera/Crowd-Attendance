@@ -8,6 +8,11 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io' show Platform;
 import 'dart:convert' show utf8;
+import 'package:intl/intl.dart';
+
+import 'services/session_service.dart';
+import 'services/module_service.dart';
+import 'models/module.dart';
 
 // ============================================================================
 // MAIN ENTRY POINT
@@ -16,14 +21,14 @@ import 'dart:convert' show utf8;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  
+
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
     ),
   );
-  
+
   runApp(const LecturerApp());
 }
 
@@ -140,11 +145,11 @@ class AuthWrapper extends StatelessWidget {
             ),
           );
         }
-        
+
         if (snapshot.hasData && snapshot.data != null) {
           return DashboardScreen(user: snapshot.data!);
         }
-        
+
         return const LoginScreen();
       },
     );
@@ -192,16 +197,19 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Step 1: Authenticate
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
+      final userCredential = await FirebaseAuth.instance
+          .signInWithEmailAndPassword(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
 
       final uid = userCredential.user!.uid;
       final currentDeviceId = await _getDeviceId();
 
       // Step 2: Check device binding
-      final lecturerRef = FirebaseFirestore.instance.collection('lecturers').doc(uid);
+      final lecturerRef = FirebaseFirestore.instance
+          .collection('lecturers')
+          .doc(uid);
       final lecturerDoc = await lecturerRef.get();
 
       if (!lecturerDoc.exists) {
@@ -210,16 +218,16 @@ class _LoginScreenState extends State<LoginScreen> {
       }
 
       final data = lecturerDoc.data()!;
-      final storedDeviceId = data['device_id'];
+      final storedDeviceId = data['device_id']?.toString().trim();
 
       // Step 3: Device binding logic
       if (storedDeviceId == null || storedDeviceId.isEmpty) {
         // First login - bind device
-        await lecturerRef.update({
+        await lecturerRef.set({
           'device_id': currentDeviceId,
           'device_locked_at': FieldValue.serverTimestamp(),
-        });
-        
+        }, SetOptions(merge: true));
+
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -228,19 +236,16 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
         }
-      } else if (storedDeviceId != currentDeviceId) {
+      } else if (storedDeviceId != currentDeviceId.trim()) {
         // Device mismatch - BLOCK
         await FirebaseAuth.instance.signOut();
         throw Exception(
-          'Unauthorized Device\n\nThis account is locked to another device.'
+          'Unauthorized Device\n\nThis account is locked to another device.',
         );
       }
 
       // Update last login
-      await lecturerRef.update({
-        'last_login': FieldValue.serverTimestamp(),
-      });
-
+      await lecturerRef.update({'last_login': FieldValue.serverTimestamp()});
     } on FirebaseAuthException catch (e) {
       String message = 'Login failed';
       switch (e.code) {
@@ -259,7 +264,7 @@ class _LoginScreenState extends State<LoginScreen> {
         default:
           message = 'Authentication error: ${e.message}';
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: Colors.red),
@@ -316,15 +321,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   Text(
                     'Lecturer Login',
                     style: Theme.of(context).textTheme.headlineLarge,
                   ),
                   const SizedBox(height: 8),
-                  
+
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF1D1E33),
                       borderRadius: BorderRadius.circular(8),
@@ -346,7 +354,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 48),
-                  
+
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -354,7 +362,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Email Address',
-                      prefixIcon: Icon(Icons.email_outlined, color: Color(0xFF00BCD4)),
+                      prefixIcon: Icon(
+                        Icons.email_outlined,
+                        color: Color(0xFF00BCD4),
+                      ),
                       hintText: 'lecturer@sjp.ac.lk',
                     ),
                     validator: (value) {
@@ -368,7 +379,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  
+
                   TextFormField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
@@ -376,10 +387,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF00BCD4)),
+                      prefixIcon: const Icon(
+                        Icons.lock_outline,
+                        color: Color(0xFF00BCD4),
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                          _obscurePassword
+                              ? Icons.visibility_off
+                              : Icons.visibility,
                           color: Colors.white54,
                         ),
                         onPressed: () {
@@ -396,7 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onFieldSubmitted: (_) => _handleLogin(),
                   ),
                   const SizedBox(height: 40),
-                  
+
                   SizedBox(
                     width: double.infinity,
                     height: 56,
@@ -408,14 +424,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.black,
+                                ),
                               ),
                             )
                           : const Text('LOGIN'),
                     ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -436,9 +454,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         Expanded(
                           child: Text(
                             'Accounts are admin-created only.\nContact your institution for credentials.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontSize: 12,
-                            ),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodyMedium?.copyWith(fontSize: 12),
                           ),
                         ),
                       ],
@@ -467,7 +485,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
 class DashboardScreen extends StatefulWidget {
   final User user;
-  
+
   const DashboardScreen({Key? key, required this.user}) : super(key: key);
 
   @override
@@ -476,6 +494,7 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   String? _lecturerName;
+  String? _selectedModuleFilter;
 
   @override
   void initState() {
@@ -489,10 +508,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .collection('lecturers')
           .doc(widget.user.uid)
           .get();
-      
+
       if (doc.exists) {
         setState(() {
-          _lecturerName = doc.data()?['name'] ?? widget.user.email?.split('@')[0];
+          _lecturerName =
+              doc.data()?['name'] ?? widget.user.email?.split('@')[0];
         });
       }
     } catch (e) {
@@ -501,71 +521,291 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _createSession() async {
-    final moduleController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
     final topicController = TextEditingController();
+    final moduleService = ModuleService();
+    String? selectedModuleId;
+    Module? selectedModule;
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text('Create New Session'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: moduleController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Module Code',
-                hintText: 'e.g., SE3021',
-                prefixIcon: Icon(Icons.book, color: Color(0xFF00BCD4)),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: topicController,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Session Topic',
-                hintText: 'e.g., OOP Concepts',
-                prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (moduleController.text.isNotEmpty && 
-                  topicController.text.isNotEmpty) {
-                Navigator.pop(context, true);
-              }
-            },
-            child: const Text('START SESSION'),
-          ),
-        ],
-      ),
+    TimeOfDay startTime = TimeOfDay.now();
+    TimeOfDay endTime = TimeOfDay(
+      hour: (TimeOfDay.now().hour + 2) % 24,
+      minute: TimeOfDay.now().minute,
     );
 
-    if (result == true && moduleController.text.isNotEmpty) {
-      try {
+    String calculateDurationText(TimeOfDay start, TimeOfDay end) {
+      int diffMinutes = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
+      if (diffMinutes < 0) diffMinutes += 24 * 60;
+      final hrs = diffMinutes ~/ 60;
+      final mins = diffMinutes % 60;
+      if (hrs > 0 && mins > 0) return '${hrs}h ${mins}m';
+      if (hrs > 0) return '$hrs hr${hrs > 1 ? "s" : ""}';
+      return '$mins mins';
+    }
+
+    try {
+      final result = await showDialog<bool>(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1D1E33),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: const Text('Create New Session'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      StreamBuilder<List<Module>>(
+                        stream: moduleService.watchModulesForLecturer(
+                          widget.user.uid,
+                        ),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 12),
+                              child: CircularProgressIndicator(),
+                            );
+                          }
+
+                          if (snapshot.hasError) {
+                            return Text(
+                              snapshot.error.toString(),
+                              style: const TextStyle(color: Colors.redAccent),
+                            );
+                          }
+
+                          final modules = snapshot.data ?? const <Module>[];
+                          if (modules.isEmpty) {
+                            return const Text(
+                              'No modules available.',
+                              style: TextStyle(color: Colors.white70),
+                            );
+                          }
+
+                          final stillExists =
+                              selectedModuleId != null &&
+                              modules.any((m) => m.id == selectedModuleId);
+                          if (!stillExists && selectedModuleId != null) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              setDialogState(() {
+                                selectedModuleId = null;
+                                selectedModule = null;
+                              });
+                            });
+                          }
+
+                          return DropdownButtonFormField<String>(
+                            key: ValueKey<String?>(selectedModuleId),
+                            initialValue: selectedModuleId,
+                            dropdownColor: const Color(0xFF1D1E33),
+                            iconEnabledColor: const Color(0xFF00BCD4),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Module',
+                              hintText: 'Select module',
+                              prefixIcon: Icon(
+                                Icons.book,
+                                color: Color(0xFF00BCD4),
+                              ),
+                            ),
+                            items: modules
+                                .map(
+                                  (m) => DropdownMenuItem<String>(
+                                    value: m.id,
+                                    child: Text(
+                                      '${m.code} — ${m.name}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                            onChanged: (value) {
+                              setDialogState(() {
+                                selectedModuleId = value;
+                                selectedModule = value == null
+                                    ? null
+                                    : modules.firstWhere((m) => m.id == value);
+                              });
+                            },
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Select module';
+                              }
+                              return null;
+                            },
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: topicController,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'Session Topic',
+                          hintText: 'e.g., OOP Concepts',
+                          prefixIcon: Icon(Icons.topic, color: Color(0xFF00BCD4)),
+                        ),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Enter session topic';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: startTime,
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    startTime = picked;
+                                    final sMin = startTime.hour * 60 + startTime.minute;
+                                    final eMin = endTime.hour * 60 + endTime.minute;
+                                    if (eMin <= sMin) {
+                                      endTime = TimeOfDay(
+                                        hour: (startTime.hour + 2) % 24,
+                                        minute: startTime.minute,
+                                      );
+                                    }
+                                  });
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Start Time',
+                                  prefixIcon: Icon(Icons.access_time, color: Color(0xFF00BCD4)),
+                                ),
+                                child: Text(
+                                  startTime.format(context),
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              onTap: () async {
+                                final picked = await showTimePicker(
+                                  context: context,
+                                  initialTime: endTime,
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    endTime = picked;
+                                  });
+                                }
+                              },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'End Time',
+                                  prefixIcon: Icon(Icons.timer_outlined, color: Color(0xFF00BCD4)),
+                                ),
+                                child: Text(
+                                  endTime.format(context),
+                                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00BCD4).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF00BCD4).withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.timelapse, size: 14, color: Color(0xFF00BCD4)),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Duration: ${calculateDurationText(startTime, endTime)}',
+                              style: const TextStyle(
+                                color: Color(0xFF00BCD4),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('CANCEL'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    if (formKey.currentState?.validate() ?? false) {
+                      Navigator.pop(context, true);
+                    }
+                  },
+                  child: const Text('START SESSION'),
+                ),
+              ],
+            );
+          },
+        ),
+      );
+
+      if (result == true && selectedModule != null) {
+        final moduleCode = selectedModule!.code.trim().toUpperCase();
+        final sessionTopic = topicController.text.trim();
+
+        final now = DateTime.now();
+        final startDateTime = DateTime(now.year, now.month, now.day, startTime.hour, startTime.minute);
+        var endDateTime = DateTime(now.year, now.month, now.day, endTime.hour, endTime.minute);
+        if (endDateTime.isBefore(startDateTime)) {
+          endDateTime = endDateTime.add(const Duration(days: 1));
+        }
+        final durationMins = endDateTime.difference(startDateTime).inMinutes;
+        final formattedDuration = SessionService.formatDurationString(startDateTime, endDateTime);
+        final startStr = DateFormat('hh:mm a').format(startDateTime);
+        final endStr = DateFormat('hh:mm a').format(endDateTime);
+
         // Create session in Firestore
         final sessionRef = await FirebaseFirestore.instance
             .collection('active_sessions')
             .add({
-          'lecturer_id': widget.user.uid,
-          'module': moduleController.text.trim(),
-          'topic': topicController.text.trim(),
-          'created_at': FieldValue.serverTimestamp(),
-          'status': 'active',
-        });
+              'lecturer_id': widget.user.uid,
+              // Keep existing fields
+              'module': moduleCode,
+              'topic': sessionTopic,
+              // Canonical fields used by services/modules
+              'module_id': selectedModule!.id,
+              'module_code': moduleCode,
+              'session_topic': sessionTopic,
+              'created_at': FieldValue.serverTimestamp(),
+              'started_at': Timestamp.fromDate(startDateTime),
+              'ended_at': Timestamp.fromDate(endDateTime),
+              'start_time': Timestamp.fromDate(startDateTime),
+              'end_time': Timestamp.fromDate(endDateTime),
+              'duration_minutes': durationMins,
+              'duration_formatted': formattedDuration,
+              'duration_range': '$startStr - $endStr',
+              'status': 'active',
+            });
 
         if (mounted) {
           Navigator.push(
@@ -573,22 +813,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
             MaterialPageRoute(
               builder: (context) => ScannerScreen(
                 sessionId: sessionRef.id,
-                module: moduleController.text.trim(),
-                topic: topicController.text.trim(),
+                module: moduleCode,
+                topic: sessionTopic,
               ),
             ),
           );
         }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error creating session: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating session: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      topicController.dispose();
     }
   }
 
@@ -610,7 +852,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,10 +863,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [
-                      const Color(0xFF00BCD4),
-                      const Color(0xFF00ACC1),
-                    ],
+                    colors: [const Color(0xFF00BCD4), const Color(0xFF00ACC1)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
@@ -635,10 +874,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     const Text(
                       'Welcome back,',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 16,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 16),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -653,7 +889,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              
+
               // Create Session Button
               SizedBox(
                 width: double.infinity,
@@ -692,7 +928,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
               const SizedBox(height: 32),
-              
+
+              _buildModuleFilter(),
+              const SizedBox(height: 32),
+
+              _buildActiveSessionsList(),
+              const SizedBox(height: 32),
+
+              _buildCompletedSessionsList(),
+              const SizedBox(height: 32),
+
               // Info Card
               Container(
                 padding: const EdgeInsets.all(20),
@@ -705,20 +950,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.info_outline, color: Color(0xFF00BCD4)),
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFF00BCD4),
+                        ),
                         const SizedBox(width: 12),
                         Text(
                           'How it works',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontSize: 18,
-                          ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(fontSize: 18),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    _buildInfoRow('1', 'Create a new session with module code and topic'),
+                    _buildInfoRow(
+                      '1',
+                      'Create a new session with module code and topic',
+                    ),
                     _buildInfoRow('2', 'Scan for nearby students broadcasting'),
-                    _buildInfoRow('3', 'System auto-verifies students in database'),
+                    _buildInfoRow(
+                      '3',
+                      'System auto-verifies students in database',
+                    ),
                     _buildInfoRow('4', 'Attendance marked in real-time'),
                   ],
                 ),
@@ -754,12 +1008,400 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
+            child: Text(text, style: Theme.of(context).textTheme.bodyMedium),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModuleFilter() {
+    return StreamBuilder<List<Module>>(
+      stream: ModuleService().watchModulesForLecturer(widget.user.uid),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.isEmpty) return const SizedBox.shrink();
+        
+        final modules = snapshot.data!;
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Filter by Module', style: TextStyle(color: Colors.white54, fontSize: 14)),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  FilterChip(
+                    label: const Text('All'),
+                    selected: _selectedModuleFilter == null,
+                    onSelected: (selected) {
+                      setState(() => _selectedModuleFilter = null);
+                    },
+                    selectedColor: const Color(0xFF00BCD4),
+                    checkmarkColor: Colors.white,
+                    labelStyle: TextStyle(color: _selectedModuleFilter == null ? Colors.white : Colors.white70),
+                    backgroundColor: const Color(0xFF1D1E33),
+                  ),
+                  const SizedBox(width: 8),
+                  ...modules.map((m) => Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(m.code),
+                      selected: _selectedModuleFilter == m.code,
+                      onSelected: (selected) {
+                        setState(() => _selectedModuleFilter = selected ? m.code : null);
+                      },
+                      selectedColor: const Color(0xFF00BCD4),
+                      checkmarkColor: Colors.white,
+                      labelStyle: TextStyle(color: _selectedModuleFilter == m.code ? Colors.white : Colors.white70),
+                      backgroundColor: const Color(0xFF1D1E33),
+                    ),
+                  )).toList(),
+                ],
+              ),
+            ),
+          ],
+        );
+      }
+    );
+  }
+
+  Widget _buildActiveSessionsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.play_circle_fill, color: Colors.greenAccent),
+            const SizedBox(width: 8),
+            Text(
+              'Active Sessions',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: SessionService().getActiveSessionsStream(widget.user.uid),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            var docs = snapshot.data?.docs ?? [];
+            if (_selectedModuleFilter != null) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final code = data['module_code'] ?? data['module'] ?? '';
+                return code == _selectedModuleFilter;
+              }).toList();
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                _selectedModuleFilter != null 
+                  ? 'No active sessions for $_selectedModuleFilter.'
+                  : 'No active sessions. Create one to start!', 
+                style: const TextStyle(color: Colors.white54)
+              );
+            }
+
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final data = docs[index].data() as Map<String, dynamic>;
+                final sessionId = docs[index].id;
+                final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
+                final topic = data['session_topic'] ?? data['topic'] ?? '';
+
+                String? durationStr = data['duration_formatted'];
+                if (durationStr == null && data['start_time'] != null && data['end_time'] != null) {
+                  final s = (data['start_time'] as Timestamp).toDate();
+                  final e = (data['end_time'] as Timestamp).toDate();
+                  durationStr = SessionService.formatDurationString(s, e);
+                }
+
+                return Card(
+                  color: const Color(0xFF1D1E33),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: Color(0xFF00BCD4), width: 1),
+                  ),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: ListTile(
+                    title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (topic.isNotEmpty)
+                          Text(topic, style: const TextStyle(color: Colors.white70)),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            const Icon(Icons.access_time, size: 12, color: Color(0xFF00BCD4)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                durationStr ?? 'Active Session',
+                                style: const TextStyle(color: Color(0xFF00BCD4), fontSize: 11, fontWeight: FontWeight.w500),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00BCD4), size: 16),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ScannerScreen(
+                            sessionId: sessionId,
+                            module: moduleCode,
+                            topic: topic,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompletedSessionsList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.history, color: Colors.white54),
+            const SizedBox(width: 8),
+            Text(
+              'Past Sessions',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: 18),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        StreamBuilder<QuerySnapshot>(
+          stream: SessionService().getCompletedSessionsStream(widget.user.uid),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            var docs = snapshot.data?.docs ?? [];
+            if (_selectedModuleFilter != null) {
+              docs = docs.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final code = data['module_code'] ?? data['module'] ?? '';
+                return code == _selectedModuleFilter;
+              }).toList();
+            }
+
+            if (docs.isEmpty) {
+              return Text(
+                _selectedModuleFilter != null
+                  ? 'No past sessions for $_selectedModuleFilter yet.'
+                  : 'No past sessions yet.', 
+                style: const TextStyle(color: Colors.white54)
+              );
+            }
+
+            final displayDocs = docs.take(2).toList();
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: displayDocs.length,
+                  itemBuilder: (context, index) {
+                    final data = displayDocs[index].data() as Map<String, dynamic>;
+                    return PastSessionCard(data: data);
+                  },
+                ),
+                if (docs.length > 2)
+                  Center(
+                    child: TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => PastSessionsScreen(
+                              lecturerId: widget.user.uid,
+                              moduleFilter: _selectedModuleFilter,
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text('VIEW ALL PAST SESSIONS', style: TextStyle(color: Colors.cyan, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// ============================================================================
+// PAST SESSIONS WIDGETS
+// ============================================================================
+
+class PastSessionCard extends StatelessWidget {
+  final Map<String, dynamic> data;
+
+  const PastSessionCard({Key? key, required this.data}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final moduleCode = data['module_code'] ?? data['module'] ?? 'Unknown Module';
+    final topic = data['session_topic'] ?? data['topic'] ?? '';
+    final studentCount = ((data['student_count'] ?? 0) as num).toInt().clamp(0, 1 << 30);
+    
+    DateTime? date;
+    DateTime? startTime;
+    DateTime? endTime;
+    
+    if (data['created_at'] != null) date = (data['created_at'] as Timestamp).toDate();
+    if (data['start_time'] != null) {
+      startTime = (data['start_time'] as Timestamp).toDate();
+    } else if (data['started_at'] != null) {
+      startTime = (data['started_at'] as Timestamp).toDate();
+    }
+    if (data['end_time'] != null) {
+      endTime = (data['end_time'] as Timestamp).toDate();
+    } else if (data['ended_at'] != null) {
+      endTime = (data['ended_at'] as Timestamp).toDate();
+    }
+    
+    String dateString = date != null ? DateFormat('MMM dd, yyyy').format(date) : 'Unknown Date';
+    String durationDisplay;
+    if (data['duration_formatted'] != null) {
+      durationDisplay = data['duration_formatted'];
+    } else if (startTime != null && endTime != null) {
+      durationDisplay = SessionService.formatDurationString(startTime, endTime);
+    } else {
+      String startTimeString = startTime != null ? DateFormat('hh:mm a').format(startTime) : '--';
+      String endTimeString = endTime != null ? DateFormat('hh:mm a').format(endTime) : '--';
+      durationDisplay = '$startTimeString - $endTimeString';
+    }
+
+    return Card(
+      color: const Color(0xFF1D1E33),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        title: Text(moduleCode, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (topic.isNotEmpty) ...[
+              Text(topic, style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+            ] else ...[
+              const SizedBox(height: 4),
+            ],
+            Row(
+              children: [
+                const Icon(Icons.calendar_today, size: 12, color: Colors.white54),
+                const SizedBox(width: 4),
+                Text(dateString, style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                const SizedBox(width: 12),
+                const Icon(Icons.access_time, size: 12, color: Colors.white54),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    durationDisplay,
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        trailing: Text('$studentCount students', style: const TextStyle(color: Colors.white70)),
+        isThreeLine: true,
+      ),
+    );
+  }
+}
+
+class PastSessionsScreen extends StatelessWidget {
+  final String lecturerId;
+  final String? moduleFilter;
+  const PastSessionsScreen({Key? key, required this.lecturerId, this.moduleFilter}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('All Past Sessions'),
+        backgroundColor: const Color(0xFF1D1E33),
+        elevation: 0,
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: StreamBuilder<QuerySnapshot>(
+            stream: SessionService().getCompletedSessionsStream(lecturerId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              
+              final docs = snapshot.data?.docs ?? [];
+              var filteredDocs = docs;
+              if (moduleFilter != null) {
+                filteredDocs = filteredDocs.where((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  final code = data['module_code'] ?? data['module'] ?? '';
+                  return code == moduleFilter;
+                }).toList();
+              }
+              
+              if (filteredDocs.isEmpty) {
+                return Center(
+                  child: Text(
+                    moduleFilter != null ? 'No past sessions for $moduleFilter.' : 'No past sessions.', 
+                    style: const TextStyle(color: Colors.white54)
+                  )
+                );
+              }
+              
+              return ListView.builder(
+                itemCount: filteredDocs.length,
+                itemBuilder: (context, index) {
+                  final data = filteredDocs[index].data() as Map<String, dynamic>;
+                  return PastSessionCard(data: data);
+                },
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -773,7 +1415,7 @@ class ScannerScreen extends StatefulWidget {
   final String sessionId;
   final String module;
   final String topic;
-  
+
   const ScannerScreen({
     Key? key,
     required this.sessionId,
@@ -789,13 +1431,103 @@ class _ScannerScreenState extends State<ScannerScreen> {
   bool _isScanning = false;
   final Map<String, StudentAttendance> _detectedStudents = {};
   int _devicesFound = 0;
-  
+  int _scansPerformed = 0;
+  final Set<String> _processedRegNosInCurrentScan = {};
+  Set<String>? _enrolledRegNos;
+
   static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
 
   @override
   void initState() {
     super.initState();
-    _startScanning();
+    _fetchEnrolledStudents();
+    _hydrateState().then((_) {
+      if (_scansPerformed == 0 && !_isScanning) {
+        _startScanning();
+      }
+    });
+  }
+
+  Future<void> _fetchEnrolledStudents() async {
+    try {
+      final moduleKey = widget.module.toUpperCase().trim();
+      final snap = await FirebaseFirestore.instance
+          .collection('students')
+          .where('enrolled_module_ids', arrayContains: moduleKey)
+          .get();
+      
+      final regNos = <String>{};
+      for (var doc in snap.docs) {
+        final data = doc.data();
+        if (data['reg_no'] != null) {
+          regNos.add(data['reg_no'].toString().trim());
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _enrolledRegNos = regNos;
+        });
+      }
+      print("🎓 Fetched ${regNos.length} enrolled students for module $moduleKey");
+    } catch (e) {
+      print("❌ Error fetching enrolled students: $e");
+    }
+  }
+
+  Future<void> _hydrateState() async {
+    try {
+      final sessionSnap = await FirebaseFirestore.instance.collection('active_sessions').doc(widget.sessionId).get();
+      if (sessionSnap.exists) {
+        final data = sessionSnap.data() as Map<String, dynamic>;
+        if (mounted) {
+          setState(() {
+            _scansPerformed = data['scans_performed'] ?? 0;
+          });
+        }
+      }
+
+      final recordsSnap = await FirebaseFirestore.instance.collection('attendance_records')
+          .where('session_id', isEqualTo: widget.sessionId)
+          .get();
+      
+      final Map<String, StudentAttendance> restoredStudents = {};
+      for (var doc in recordsSnap.docs) {
+        final data = doc.data();
+        final regNo = (data['reg_no'] ?? '').toString();
+        final studentId = (data['student_id'] ?? '').toString();
+        final rssi = data['rssi'] as int? ?? -60;
+        final scanCount = data['scan_count'] as int? ?? 1;
+        
+        DateTime timestamp;
+        if (data['marked_at'] != null) {
+          timestamp = (data['marked_at'] as Timestamp).toDate();
+        } else if (data['timestamp'] != null) {
+          timestamp = (data['timestamp'] as Timestamp).toDate();
+        } else {
+          timestamp = DateTime.now();
+        }
+
+        if (regNo.isNotEmpty && studentId.isNotEmpty) {
+          restoredStudents[regNo] = StudentAttendance(
+            regNo: regNo,
+            studentId: studentId,
+            rssi: rssi,
+            timestamp: timestamp,
+            isVerified: true,
+            scan_count: scanCount,
+          );
+        }
+      }
+      
+      if (mounted && restoredStudents.isNotEmpty) {
+        setState(() {
+          _detectedStudents.addAll(restoredStudents);
+        });
+      }
+    } catch (e) {
+      print("Error hydrating state: $e");
+    }
   }
 
   Future<bool> _requestPermissions() async {
@@ -812,7 +1544,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Permission denied: ${permission.toString().split('.').last}'),
+                content: Text(
+                  'Permission denied: ${permission.toString().split('.').last}',
+                ),
                 backgroundColor: Colors.red,
               ),
             );
@@ -860,7 +1594,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
       }
     }
 
-    setState(() => _isScanning = true);
+    setState(() {
+      _isScanning = true;
+      _processedRegNosInCurrentScan.clear();
+    });
 
     print("========================================");
     print("🔵 LECTURER APP: Starting BLE Scan");
@@ -896,10 +1633,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Future<void> _processScanResult(ScanResult result) async {
     _devicesFound++;
-    
+
     final deviceName = result.device.platformName;
     final deviceId = result.device.remoteId.toString();
-    
+
     print("\n========================================");
     print("📱 DEVICE DETECTED #$_devicesFound");
     print("========================================");
@@ -915,47 +1652,64 @@ class _ScannerScreenState extends State<ScannerScreen> {
     // Extract registration number from manufacturer data (SECURE METHOD)
     // flutter_blue_plus returns Map<int, List<int>> where key is company ID
     final advertisementData = result.advertisementData;
-    final Map<int, List<int>> manufacturerDataMap = advertisementData.manufacturerData;
-    
+    final Map<int, List<int>> manufacturerDataMap =
+        advertisementData.manufacturerData;
+
     print("🔒 Checking manufacturer data...");
     print("   Available Company IDs: ${manufacturerDataMap.keys.toList()}");
-    
+
     if (!manufacturerDataMap.containsKey(0xFFFF)) {
-      print("⚠️  Device missing manufacturer data with Company ID 0xFFFF - SKIPPED");
+      print(
+        "⚠️  Device missing manufacturer data with Company ID 0xFFFF - SKIPPED",
+      );
       print("   This device is not broadcasting with secure method");
       print("========================================\n");
       return;
     }
-    
+
     // Get manufacturer data for company ID 0xFFFF
     // Note: flutter_blue_plus automatically parses the company ID from the packet
     // The data here is ONLY the payload bytes (company ID already stripped)
     final List<int> regNoBytesList = manufacturerDataMap[0xFFFF]!;
-    
+
     print("📦 Manufacturer Data Found:");
     print("   Company ID: 0xFFFF (Unreserved)");
     print("   Data Length: ${regNoBytesList.length} bytes");
     print("   Raw Bytes: $regNoBytesList");
-    
+
     String regNo;
     try {
-      regNo = utf8.decode(regNoBytesList).trim();
+      regNo = utf8.decode(regNoBytesList).replaceAll('\x00', '').trim();
       print("✅ Decoded RegNo: $regNo");
     } catch (e) {
       print("❌ Failed to decode manufacturer data: $e");
       print("========================================\n");
       return;
     }
-    
+
     print("🎓 Processing Student:");
     print("   RegNo: $regNo");
 
-    // Check if already processed in this session
-    if (_detectedStudents.containsKey(regNo)) {
-      print("⏭️  Student already marked - SKIPPED");
+    // Check if already processed in THIS scan
+    if (_processedRegNosInCurrentScan.contains(regNo)) {
+      print("⏭️  Student already marked in this scan - SKIPPED");
       print("========================================\n");
       return;
     }
+    
+    // Filter unregistered students
+    if (_enrolledRegNos == null) {
+      print("⏳ Still loading enrolled students list - ignoring scan for now");
+      return;
+    }
+    
+    if (!_enrolledRegNos!.contains(regNo)) {
+      print("⛔ Unregistered student detected - ignoring: $regNo");
+      print("========================================\n");
+      return;
+    }
+    
+    _processedRegNosInCurrentScan.add(regNo);
 
     // Validate RegNo format
     final regNoLower = regNo.toLowerCase();
@@ -968,7 +1722,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     try {
       // Query Firestore to verify student
       print("🔍 Querying Firebase for student: $regNo");
-      
+
       final studentQuery = await FirebaseFirestore.instance
           .collection('students')
           .where('reg_no', isEqualTo: regNo)
@@ -978,7 +1732,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       if (studentQuery.docs.isEmpty) {
         print("❌ Student not found in database");
         print("========================================\n");
-        
+
         setState(() {
           _detectedStudents[regNo] = StudentAttendance(
             regNo: regNo,
@@ -993,37 +1747,36 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
       final studentDoc = studentQuery.docs.first;
       final studentId = studentDoc.id;
-      
+
       print("✅ Student verified in Firebase:");
       print("   Name: ${studentDoc.data()['email']}");
       print("   Student ID: $studentId");
 
       // Mark attendance in Firestore
       print("💾 Marking attendance...");
-      
-      await FirebaseFirestore.instance
-          .collection('active_sessions')
-          .doc(widget.sessionId)
-          .collection('attendance')
-          .doc(regNo)
-          .set({
-        'student_id': studentId,
-        'reg_no': regNo,
-        'timestamp': FieldValue.serverTimestamp(),
-        'rssi': result.rssi,
-        'status': 'present',
-      });
+
+      await SessionService().markAttendance(
+        sessionId: widget.sessionId,
+        studentId: studentId,
+        regNo: regNo,
+        rssi: result.rssi,
+      );
 
       print("✅ Attendance marked successfully!");
       print("========================================\n");
 
       setState(() {
+        int newScanCount = 1;
+        if (_detectedStudents.containsKey(regNo)) {
+           newScanCount = (_detectedStudents[regNo]?.scan_count ?? 0) + 1;
+        }
         _detectedStudents[regNo] = StudentAttendance(
           regNo: regNo,
           studentId: studentId,
           rssi: result.rssi,
           timestamp: DateTime.now(),
           isVerified: true,
+          scan_count: newScanCount,
         );
       });
 
@@ -1044,8 +1797,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   void _stopScanning() {
     FlutterBluePlus.stopScan();
-    setState(() => _isScanning = false);
-    print("🔴 Scan stopped");
+    
+    int newScans = _scansPerformed + 1;
+    if (mounted) {
+      setState(() {
+        _isScanning = false;
+        _scansPerformed = newScans;
+      });
+    } else {
+      _isScanning = false;
+      _scansPerformed = newScans;
+    }
+    
+    // Update session document with scans performed
+    FirebaseFirestore.instance
+        .collection('active_sessions')
+        .doc(widget.sessionId)
+        .update({'scans_performed': newScans});
+    print("🔴 Scan stopped (Total scans: $newScans)");
   }
 
   Future<void> _endSession() async {
@@ -1053,9 +1822,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('End Session?'),
         content: const Text('This will mark the session as completed.'),
         actions: [
@@ -1073,17 +1840,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
     );
 
     if (confirm == true) {
-      _stopScanning();
-      
-      // Update session status
-      await FirebaseFirestore.instance
-          .collection('active_sessions')
-          .doc(widget.sessionId)
-          .update({
-        'status': 'completed',
-        'completed_at': FieldValue.serverTimestamp(),
-        'total_students': _detectedStudents.length,
-      });
+      if (_isScanning) {
+        _stopScanning();
+      }
+
+      // End session and update module counters atomically.
+      await SessionService().endSession(
+        widget.sessionId,
+        totalStudents: _detectedStudents.length,
+      );
 
       if (mounted) {
         Navigator.pop(context);
@@ -1093,8 +1858,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: () async {
+        if (!_isScanning) return true;
+        
+        final shouldPop = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1D1E33),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: const Text('Stop Scanning?'),
+            content: const Text('A scan is currently active. Do you want to stop it and save the round before leaving?'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('STAY'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text('STOP & LEAVE'),
+              ),
+            ],
+          ),
+        );
+        
+        if (shouldPop == true) {
+          _stopScanning();
+          return true;
+        }
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
         backgroundColor: const Color(0xFF1D1E33),
         elevation: 0,
         title: const Text('Live Scanner'),
@@ -1108,10 +1904,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [
-                    const Color(0xFF00BCD4),
-                    const Color(0xFF00ACC1),
-                  ],
+                  colors: [const Color(0xFF00BCD4), const Color(0xFF00ACC1)],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
@@ -1131,33 +1924,83 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   const SizedBox(height: 8),
                   Text(
                     widget.topic,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 16),
                   ),
                   const SizedBox(height: 12),
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _isScanning ? Colors.green : Colors.red,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'COMPLETED ROUNDS',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '$_scansPerformed',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Wrap(
+                                    spacing: 6,
+                                    children: [
+                                      if (_scansPerformed == 0 && !_isScanning)
+                                        const Text(
+                                          'None yet',
+                                          style: TextStyle(color: Colors.white54, fontSize: 14),
+                                        ),
+                                      ...List.generate(
+                                        _scansPerformed,
+                                        (index) => const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.greenAccent,
+                                          size: 20,
+                                        ),
+                                      ),
+                                      if (_isScanning)
+                                        const Padding(
+                                          padding: EdgeInsets.only(left: 4.0),
+                                          child: SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2.5,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.orangeAccent),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        _isScanning ? 'Scanning Active' : 'Scan Stopped',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${_detectedStudents.length} Present',
+                        '${_detectedStudents.length} Students',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -1169,7 +2012,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 ],
               ),
             ),
-            
+
             // Student List
             Expanded(
               child: _detectedStudents.isEmpty
@@ -1189,9 +2032,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                             _isScanning
                                 ? 'Scanning for students...'
                                 : 'Scan stopped',
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              color: Colors.white54,
-                            ),
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(color: Colors.white54),
                           ),
                         ],
                       ),
@@ -1200,22 +2042,21 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: _detectedStudents.length,
                       itemBuilder: (context, index) {
-                        final student = _detectedStudents.values.elementAt(index);
+                        final student = _detectedStudents.values.elementAt(
+                          index,
+                        );
                         return _buildStudentCard(student);
                       },
                     ),
             ),
-            
+
             // Control Buttons
             Container(
               padding: const EdgeInsets.all(16),
               decoration: const BoxDecoration(
                 color: Color(0xFF1D1E33),
                 border: Border(
-                  top: BorderSide(
-                    color: Colors.white12,
-                    width: 1,
-                  ),
+                  top: BorderSide(color: Colors.white12, width: 1),
                 ),
               ),
               child: Row(
@@ -1229,8 +2070,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                             : const Color(0xFF00BCD4),
                         padding: const EdgeInsets.symmetric(vertical: 16),
                       ),
-                      icon: Icon(_isScanning ? Icons.pause : Icons.play_arrow),
-                      label: Text(_isScanning ? 'PAUSE SCAN' : 'RESUME SCAN'),
+                      icon: Icon(_isScanning ? Icons.stop_circle_outlined : Icons.radar),
+                      label: Text(_isScanning ? 'STOP CURRENT ROUND' : 'START NEW ROUND'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -1249,6 +2090,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
@@ -1262,9 +2104,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         color: const Color(0xFF1D1E33),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: student.isVerified
-              ? const Color(0xFF00BCD4)
-              : Colors.red,
+          color: student.isVerified ? const Color(0xFF00BCD4) : Colors.red,
           width: 2,
         ),
       ),
@@ -1289,15 +2129,45 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  student.isVerified
-                      ? 'Verified • ${_formatTime(student.timestamp)}'
-                      : 'Unknown Device',
-                  style: TextStyle(
-                    color: student.isVerified ? Colors.white70 : Colors.red,
-                    fontSize: 14,
+                if (student.isVerified)
+                  Builder(
+                    builder: (context) {
+                      int targetRounds = _scansPerformed + (_isScanning ? 1 : 0);
+                      if (student.scan_count > targetRounds) {
+                        targetRounds = student.scan_count;
+                      }
+                      int missingCount = targetRounds - student.scan_count;
+                      
+                      return Row(
+                        children: [
+                          ...List.generate(
+                            student.scan_count,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 2.0),
+                              child: Icon(Icons.star, color: Colors.amber, size: 14),
+                            ),
+                          ),
+                          ...List.generate(
+                            missingCount,
+                            (index) => const Padding(
+                              padding: EdgeInsets.only(right: 2.0),
+                              child: Icon(Icons.star_border, color: Colors.white30, size: 14),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatTime(student.timestamp),
+                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ],
+                      );
+                    },
+                  )
+                else
+                  const Text(
+                    'Unknown Device',
+                    style: TextStyle(color: Colors.red, fontSize: 14),
                   ),
-                ),
               ],
             ),
           ),
@@ -1309,10 +2179,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             ),
             child: Text(
               '${student.rssi} dBm',
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
             ),
           ),
         ],
@@ -1326,7 +2193,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   void dispose() {
-    _stopScanning();
+    if (_isScanning) {
+      _stopScanning();
+    }
     super.dispose();
   }
 }
@@ -1341,6 +2210,7 @@ class StudentAttendance {
   final int rssi;
   final DateTime timestamp;
   final bool isVerified;
+  int scan_count;
 
   StudentAttendance({
     required this.regNo,
@@ -1348,5 +2218,6 @@ class StudentAttendance {
     required this.rssi,
     required this.timestamp,
     required this.isVerified,
+    this.scan_count = 1,
   });
 }

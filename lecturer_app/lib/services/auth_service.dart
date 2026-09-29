@@ -48,17 +48,18 @@ class AuthService {
       }
 
       final lecturerData = lecturerDoc.data()!;
-      final storedDeviceId = lecturerData['device_id'] as String?;
+        final storedDeviceId =
+          (lecturerData['device_id'] as Object?)?.toString().trim();
 
       // Step 4: Device verification logic
       if (storedDeviceId == null || storedDeviceId.isEmpty) {
         // First-time login: Store device ID
-        await _firestore.collection('lecturers').doc(user.uid).update({
+        await _firestore.collection('lecturers').doc(user.uid).set({
           'device_id': currentDeviceId,
           'device_model': deviceModel,
           'device_locked_at': FieldValue.serverTimestamp(),
           'last_login': FieldValue.serverTimestamp(),
-        });
+        }, SetOptions(merge: true));
 
         return {
           'success': true,
@@ -67,7 +68,7 @@ class AuthService {
         };
       } else {
         // Subsequent login: Verify device ID
-        if (storedDeviceId != currentDeviceId) {
+        if (storedDeviceId != currentDeviceId.trim()) {
           // SECURITY VIOLATION: Different device
           await _auth.signOut();
           throw Exception(
