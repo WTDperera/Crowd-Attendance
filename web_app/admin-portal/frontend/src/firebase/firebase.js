@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth ,browserSessionPersistence, setPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 
@@ -18,6 +18,7 @@ const app = initializeApp(firebaseConfig);
 
 // Export services
 export const auth = getAuth(app);
+setPersistence(auth, browserSessionPersistence);
 export const db = getFirestore(app);
 
 export default app;

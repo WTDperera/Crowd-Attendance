@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { signInWithCustomToken } from 'firebase/auth'
+import { signInWithCustomToken, setPersistence, browserLocalPersistence, browserSessionPersistence, } from 'firebase/auth'
 import AuthLayout from '../components/AuthLayout.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { auth } from '../firebase/firebase'
@@ -74,6 +74,10 @@ function LoginPage() {
       const { token } = await loginWithBackend(
         formData.email,
         formData.password
+      )
+      await setPersistence(
+        auth,
+        formData.remember ? browserLocalPersistence : browserSessionPersistence
       )
       await signInWithCustomToken(auth, token)
       // Don't navigate here — AuthContext still re-verifies the lecturer
