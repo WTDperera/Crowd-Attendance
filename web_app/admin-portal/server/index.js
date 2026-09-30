@@ -6,6 +6,8 @@ const studentsRouter = require('./routes/students');
 const modulesRouter = require('./routes/modules');
 const attendanceRouter = require('./routes/attendanceRoutes');
 
+const morgan = require("morgan");
+
 const app = express();
 
 const allowedOrigins = [
@@ -13,6 +15,7 @@ const allowedOrigins = [
   'https://crowed-attendence.web.app'
 ];
 
+app.use(morgan("combined"));
 app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 

@@ -100,7 +100,6 @@ function LoginPage() {
     <AuthLayout>
       <div className="auth-header">
         <h2>Welcome back</h2>
-        <p>Sign in to manage attendance and approvals.</p>
       </div>
 
       <form className="auth-form" onSubmit={handleSubmit} noValidate>
