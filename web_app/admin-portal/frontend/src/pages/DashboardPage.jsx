@@ -214,7 +214,7 @@ function DashboardPage() {
             <span className="eyebrow">Enrollment</span>
             <h4>Student Enrollment per Module</h4>
             <span className="helper-text">
-              Share of your total students enrolled in each module.
+              percentage of your total students enrolled in each module.
             </span>
           </div>
         </div>
@@ -236,7 +236,7 @@ function DashboardPage() {
             <ResponsiveContainer width="100%" height={280}>
               <BarChart
                 data={enrollmentRows}
-                margin={{ top: 8, right: 8, left: -12, bottom: 8 }}
+                margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
@@ -255,7 +255,7 @@ function DashboardPage() {
                   tick={{ fontSize: 12, fill: '#475569' }}
                   axisLine={false}
                   tickLine={false}
-                  width={44}
+                  width={48}
                 />
                 <Tooltip
                   cursor={{ fill: 'rgba(79, 70, 229, 0.06)' }}
@@ -301,8 +301,8 @@ function DashboardPage() {
             <ResponsiveContainer width="100%" height={280}>
               <BarChart
                 data={attendanceRows}
-                margin={{ top: 8, right: 8, left: -12, bottom: 8 }}
-              >
+                margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
+               >
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
@@ -320,7 +320,7 @@ function DashboardPage() {
                   tick={{ fontSize: 12, fill: '#475569' }}
                   axisLine={false}
                   tickLine={false}
-                  width={44}
+                  width={48}
                 />
                 <Tooltip
                   cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}

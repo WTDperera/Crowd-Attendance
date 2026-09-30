@@ -13,11 +13,31 @@ class SessionService {
   String? _activeSessionId;
   String? get activeSessionId => _activeSessionId;
 
+  /// Helper to format duration string
+  static String formatDurationString(DateTime start, DateTime end) {
+    final diffMinutes = end.difference(start).inMinutes;
+    final hrs = diffMinutes ~/ 60;
+    final mins = diffMinutes % 60;
+    String durationText;
+    if (hrs > 0 && mins > 0) {
+      durationText = '${hrs}h ${mins}m';
+    } else if (hrs > 0) {
+      durationText = '$hrs hr${hrs > 1 ? "s" : ""}';
+    } else {
+      durationText = '$mins mins';
+    }
+    final startStr = DateFormat('hh:mm a').format(start);
+    final endStr = DateFormat('hh:mm a').format(end);
+    return '$startStr - $endStr ($durationText)';
+  }
+
   /// Create a new attendance session
   Future<String> createSession({
     required String moduleCode,
     required String sessionTopic,
     String? moduleId,
+    DateTime? startTime,
+    DateTime? endTime,
   }) async {
     try {
       final user = _auth.currentUser;
@@ -29,6 +49,13 @@ class SessionService {
           ? moduleId!.trim()
           : moduleCode.toUpperCase().trim();
 
+      final start = startTime ?? DateTime.now();
+      final end = endTime ?? start.add(const Duration(hours: 2));
+      final durationMins = end.difference(start).inMinutes;
+      final formattedDuration = formatDurationString(start, end);
+      final startStr = DateFormat('hh:mm a').format(start);
+      final endStr = DateFormat('hh:mm a').format(end);
+
       await sessionRef.set({
         'session_id': sessionRef.id,
         'lecturer_id': user.uid,
@@ -36,8 +63,15 @@ class SessionService {
         'module_code': moduleCode.toUpperCase(),
         'module': moduleCode.toUpperCase(),
         'session_topic': sessionTopic,
+        'topic': sessionTopic,
         'created_at': FieldValue.serverTimestamp(),
-        'started_at': FieldValue.serverTimestamp(),
+        'started_at': Timestamp.fromDate(start),
+        'ended_at': Timestamp.fromDate(end),
+        'start_time': Timestamp.fromDate(start),
+        'end_time': Timestamp.fromDate(end),
+        'duration_minutes': durationMins,
+        'duration_formatted': formattedDuration,
+        'duration_range': '$startStr - $endStr',
         'status': 'active',
         'student_count': 0,
         'students_present': [], // Array of student IDs
@@ -119,6 +153,15 @@ class SessionService {
       final batch = _firestore.batch();
       final studentRef = _firestore.collection('students').doc(studentId);
 
+      String? sessionDurationFormatted = sessionData['duration_formatted'];
+      if (sessionDurationFormatted == null &&
+          sessionData['start_time'] != null &&
+          sessionData['end_time'] != null) {
+        final s = (sessionData['start_time'] as Timestamp).toDate();
+        final e = (sessionData['end_time'] as Timestamp).toDate();
+        sessionDurationFormatted = formatDurationString(s, e);
+      }
+
       batch.set(activeAttendanceRef, {
         'student_uid': studentId,
         'student_id': studentId,
@@ -127,6 +170,12 @@ class SessionService {
         'date': dateString,
         'rssi': rssi,
         'status': 'pending',
+        if (sessionDurationFormatted != null)
+          'duration_formatted': sessionDurationFormatted,
+        if (sessionData['start_time'] != null)
+          'start_time': sessionData['start_time'],
+        if (sessionData['end_time'] != null)
+          'end_time': sessionData['end_time'],
       }, SetOptions(merge: true));
 
       batch.set(attendanceRef, {
@@ -136,6 +185,16 @@ class SessionService {
         'session_id': sessionId,
         'timestamp': FieldValue.serverTimestamp(),
         'date': dateString,
+
+        // Duration fields
+        if (sessionDurationFormatted != null)
+          'duration_formatted': sessionDurationFormatted,
+        if (sessionData['start_time'] != null)
+          'start_time': sessionData['start_time'],
+        if (sessionData['end_time'] != null)
+          'end_time': sessionData['end_time'],
+        if (sessionData['duration_minutes'] != null)
+          'duration_minutes': sessionData['duration_minutes'],
 
         // Backward-compatible fields (used by existing student stats code)
         'record_id': attendanceRef.id,
@@ -220,9 +279,12 @@ class SessionService {
         }
         
         if (leftEarlyStudentIds.isNotEmpty) {
+          // Clamp student_count to minimum 0 — avoid going negative.
+          final currentCount = (sessionData['student_count'] as num?)?.toInt() ?? 0;
+          final newCount = (currentCount - leftEarlyStudentIds.length).clamp(0, currentCount);
           batch.update(sessionRef, {
             'students_present': FieldValue.arrayRemove(leftEarlyStudentIds),
-            'student_count': FieldValue.increment(-leftEarlyStudentIds.length),
+            'student_count': newCount,
           });
         }
         

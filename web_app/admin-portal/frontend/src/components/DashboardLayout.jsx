@@ -36,7 +36,7 @@ function DashboardLayout() {
 
   const handleLogout = async () => {
     await logout()
-    navigate('/login')
+    navigate('/')
   }
 
   const closeSidebar = () => setSidebarOpen(false)
