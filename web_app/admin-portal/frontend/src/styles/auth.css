@@ -237,3 +237,13 @@ body {
     padding: 8px 10px;
   }
 }
+
+.field-success {
+  font-size: 0.85rem;
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
