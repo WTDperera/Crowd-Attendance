@@ -2,7 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getModuleById } from '../services/moduleService'
 import { getStudentsEnrolledInModule } from '../services/studentService'
-import { downloadAttendanceExcel } from '../services/attendanceExportService'
+import {
+  downloadAttendanceExcel,
+  downloadSessionExcel,
+} from '../services/attendanceExportService'
+import {
+  getModuleSessions,
+  getSessionReport,
+  markStudentAttendance,
+} from '../services/moduleAttendanceService'
 import AttendanceExportModal from '../components/AttendanceExportModal'
 import { useAuth } from '../context/AuthContext.jsx'
 
@@ -16,17 +24,33 @@ function ModuleDetailsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState('')
+
+  // Sessions state
+  const [sessions, setSessions] = useState([])
+  const [isLoadingSessions, setIsLoadingSessions] = useState(true)
+  const [downloadingSessionId, setDownloadingSessionId] = useState(null)
+
+  // Session attendance management modal state
+  const [activeSessionModal, setActiveSessionModal] = useState(null)
+  const [sessionReportData, setSessionReportData] = useState(null)
+  const [isLoadingReport, setIsLoadingReport] = useState(false)
+  const [sessionSearch, setSessionSearch] = useState('')
+  const [pendingChanges, setPendingChanges] = useState({})
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false)
+  const [saveErrorMessage, setSaveErrorMessage] = useState('')
+
+  // Module matrix export modal state
   const [isExportModalOpen, setIsExportModalOpen] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState({ type: '', text: '' })
   const moduleKey = decodeURIComponent(moduleId || '').trim().toUpperCase()
-  
-const lecturerName =
-  lecturerProfile?.fullName ||
-  lecturerProfile?.name ||
-  user?.displayName ||
-  user?.email?.split('@')[0] ||
-  ''
+
+  const lecturerName =
+    lecturerProfile?.fullName ||
+    lecturerProfile?.name ||
+    user?.displayName ||
+    user?.email?.split('@')[0] ||
+    ''
 
   const getCount = (student, prefix, key) => {
     const mapVal = student?.[prefix]?.[key]
@@ -40,6 +64,18 @@ const lecturerName =
     }
 
     return 0
+  }
+
+  const fetchSessions = async () => {
+    try {
+      setIsLoadingSessions(true)
+      const data = await getModuleSessions(moduleKey)
+      setSessions(data)
+    } catch (err) {
+      console.error('Failed to load sessions:', err)
+    } finally {
+      setIsLoadingSessions(false)
+    }
   }
 
   useEffect(() => {
@@ -85,7 +121,10 @@ const lecturerName =
       )
     }
 
-    fetchModule().then(subscribeStudents)
+    fetchModule().then(() => {
+      subscribeStudents()
+      fetchSessions()
+    })
 
     return () => {
       isMounted = false
@@ -126,33 +165,268 @@ const lecturerName =
       )
       setExportMessage({
         type: 'success',
-        text: 'Attendance records downloaded successfully!',
+        text: 'Attendance matrix downloaded successfully!',
       })
       setIsExportModalOpen(false)
 
-      // Clear success message after 3 seconds
       setTimeout(() => {
         setExportMessage({ type: '', text: '' })
       }, 3000)
     } catch (error) {
       setExportMessage({
         type: 'error',
-        text: error.message || 'Failed to download attendance records.',
+        text: error.message || 'Failed to download attendance matrix.',
       })
     } finally {
       setIsExporting(false)
     }
   }
 
-  const totalSessions = Number(moduleData?.total_sessions || 0)
+  const handleDownloadSession = async (sessionId) => {
+    setDownloadingSessionId(sessionId)
+    setExportMessage({ type: '', text: '' })
+
+    try {
+      await downloadSessionExcel(sessionId)
+      setExportMessage({
+        type: 'success',
+        text: 'Session report downloaded successfully!',
+      })
+      setTimeout(() => {
+        setExportMessage({ type: '', text: '' })
+      }, 3000)
+    } catch (error) {
+      setExportMessage({
+        type: 'error',
+        text: error.message || 'Failed to download session report.',
+      })
+    } finally {
+      setDownloadingSessionId(null)
+    }
+  }
+
+  const getStudentSavedCategory = (st) => {
+    if (!st) return 'Absent'
+    if (st.saved_status) return st.saved_status
+    if (st.status === 1) {
+      return st.marked_late ? 'Late' : 'Present'
+    }
+    if (st.status === 'ex') {
+      return 'Excused'
+    }
+    return 'Absent'
+  }
+
+  const handleOpenSessionModal = async (session) => {
+    setActiveSessionModal(session)
+    setSessionReportData(null)
+    setIsLoadingReport(true)
+    setSessionSearch('')
+    setPendingChanges({})
+    setSaveErrorMessage('')
+
+    try {
+      const data = await getSessionReport(session.id)
+      setSessionReportData(data)
+    } catch (err) {
+      window.alert(err.message || 'Unable to load session report.')
+      setActiveSessionModal(null)
+    } finally {
+      setIsLoadingReport(false)
+    }
+  }
+
+  const handleCloseSessionModal = () => {
+    setActiveSessionModal(null)
+    setSessionReportData(null)
+    setSessionSearch('')
+    setPendingChanges({})
+    setSaveErrorMessage('')
+  }
+
+  const handleCloseSessionModalWithCheck = () => {
+    if (Object.keys(pendingChanges).length > 0) {
+      const confirmed = window.confirm('You have unsaved changes. Save or discard?')
+      if (!confirmed) return
+    }
+    handleCloseSessionModal()
+  }
+
+  const handleDownloadSessionWithCheck = (sessionId) => {
+    if (Object.keys(pendingChanges).length > 0) {
+      const confirmed = window.confirm(
+        'You have unsaved changes. Save or discard?'
+      )
+      if (!confirmed) return
+    }
+    handleDownloadSession(sessionId)
+  }
+
+  const handleStageStatusChange = (studentUid, newStatus) => {
+    const studentRec = sessionReportData?.records?.find(
+      (r) => r.student_uid === studentUid
+    )
+    if (!studentRec) return
+
+    const originalSaved = getStudentSavedCategory(studentRec)
+
+    setPendingChanges((prev) => {
+      const next = { ...prev }
+      if (originalSaved === newStatus) {
+        delete next[studentUid]
+      } else {
+        next[studentUid] = newStatus
+      }
+      return next
+    })
+  }
+
+  const handleDiscardChanges = () => {
+    setPendingChanges({})
+    setSaveErrorMessage('')
+  }
+
+  const handleSavePendingAttendance = async () => {
+    if (!activeSessionModal) return
+    const entries = Object.entries(pendingChanges)
+    if (entries.length === 0) return
+
+    setIsSavingAttendance(true)
+    setSaveErrorMessage('')
+    const remainingPending = {}
+    const errors = []
+
+    for (const [studentUid, newStatus] of entries) {
+      try {
+        await markStudentAttendance(activeSessionModal.id, studentUid, newStatus)
+      } catch (err) {
+        remainingPending[studentUid] = newStatus
+        const studentRec = sessionReportData?.records?.find(
+          (r) => r.student_uid === studentUid
+        )
+        const identifier = studentRec?.reg_no || studentUid
+        errors.push(`${identifier}: ${err.message || 'Marking failed'}`)
+      }
+    }
+
+    setPendingChanges(remainingPending)
+    setIsSavingAttendance(false)
+
+    // Reload fresh data from server
+    try {
+      const freshData = await getSessionReport(activeSessionModal.id)
+      setSessionReportData(freshData)
+      fetchSessions()
+    } catch (err) {
+      console.error('Error refreshing session report:', err)
+    }
+
+    if (errors.length > 0) {
+      const errorText = `Failed to save ${errors.length} student(s):\n${errors.join('\n')}`
+      setSaveErrorMessage(errorText)
+      window.alert(`Some changes could not be saved:\n\n${errors.join('\n')}`)
+    } else {
+      setExportMessage({
+        type: 'success',
+        text: `Saved attendance changes successfully!`,
+      })
+      setTimeout(() => {
+        setExportMessage({ type: '', text: '' })
+      }, 3000)
+    }
+  }
+
+  const liveSessionStats = useMemo(() => {
+    if (!sessionReportData?.records) {
+      return {
+        total_students: 0,
+        total_present: 0,
+        total_absent: 0,
+        total_excused: 0,
+        attendance_percentage: 0,
+      }
+    }
+
+    let presents = 0
+    let absents = 0
+    let excused = 0
+
+    sessionReportData.records.forEach((st) => {
+      const effectiveCategory =
+        pendingChanges[st.student_uid] !== undefined
+          ? pendingChanges[st.student_uid]
+          : getStudentSavedCategory(st)
+
+      if (effectiveCategory === 'Present' || effectiveCategory === 'Late') {
+        presents++
+      } else if (effectiveCategory === 'Excused') {
+        excused++
+      } else {
+        absents++
+      }
+    })
+
+    const total = sessionReportData.records.length
+    const rate =
+      total > 0 ? Math.round(((presents + excused) / total) * 10000) / 100 : 0
+
+    return {
+      total_students: total,
+      total_present: presents,
+      total_absent: absents,
+      total_excused: excused,
+      attendance_percentage: rate,
+    }
+  }, [sessionReportData, pendingChanges])
+
+  const filteredSessionRecords = useMemo(() => {
+    if (!sessionReportData?.records) return []
+    const q = sessionSearch.trim().toLowerCase()
+    const sorted = [...sessionReportData.records].sort((a, b) =>
+      (a.reg_no || '').localeCompare(b.reg_no || '', undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      })
+    )
+    if (!q) return sorted
+    return sorted.filter((r) => {
+      const regNo = (r.reg_no || '').toLowerCase()
+      return regNo.includes(q)
+    })
+  }, [sessionReportData, sessionSearch])
+
+  const totalSessions = sessions.length || Number(moduleData?.total_sessions || 0)
   const fallbackKey = (moduleData?.code || moduleKey || '').trim().toUpperCase()
-  const firstStudent = students[0]
-  const firstStudentFlatAttendance = firstStudent
-    ? firstStudent[`attendance_counts.${moduleKey}`]
-    : undefined
-  const firstStudentFlatAbsence = firstStudent
-    ? firstStudent[`absence_counts.${moduleKey}`]
-    : undefined
+
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr) return '—'
+    try {
+      const d = new Date(dateStr)
+      if (isNaN(d.getTime())) return dateStr
+      return d.toLocaleDateString('en-US', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      })
+    } catch {
+      return dateStr
+    }
+  }
+
+  const formatTimeDisplay = (dateStr) => {
+    if (!dateStr) return ''
+    try {
+      const d = new Date(dateStr)
+      if (isNaN(d.getTime())) return ''
+      return d.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      })
+    } catch {
+      return ''
+    }
+  }
 
   if (isLoading) {
     return (
@@ -166,9 +440,7 @@ const lecturerName =
     return (
       <div className="card">
         <h4>Module not found</h4>
-        <p className="helper-text">
-          Return to modules list to continue.
-        </p>
+        <p className="helper-text">Return to modules list to continue.</p>
         <button
           className="primary-button"
           type="button"
@@ -194,7 +466,7 @@ const lecturerName =
               className="primary-button"
               type="button"
               onClick={handleExportClick}
-              title="Download attendance records as Excel file"
+              title="Download full module attendance matrix as Excel file"
             >
               📥 Download Attendance Excel
             </button>
@@ -225,6 +497,106 @@ const lecturerName =
         </div>
       </section>
 
+      {/* SESSIONS SECTION */}
+      <section className="card">
+        <div className="card-header row">
+          <div>
+            <h4>Sessions</h4>
+            <span className="helper-text">
+              All active and completed sessions recorded for this module.
+            </span>
+          </div>
+        </div>
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date &amp; Time</th>
+                <th>Topic</th>
+                <th>Status</th>
+                <th>Attendees</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {isLoadingSessions && (
+                <tr>
+                  <td colSpan="5" className="empty-cell">
+                    Loading sessions...
+                  </td>
+                </tr>
+              )}
+              {!isLoadingSessions &&
+                sessions.map((session) => {
+                  const dateStr = formatDateDisplay(session.started_at)
+                  const timeStr = formatTimeDisplay(session.started_at)
+
+                  return (
+                    <tr key={session.id}>
+                      <td>
+                        <strong>{dateStr}</strong>
+                        {timeStr && (
+                          <span
+                            className="helper-text"
+                            style={{ display: 'block', fontSize: '0.8rem' }}
+                          >
+                            {timeStr}
+                          </span>
+                        )}
+                      </td>
+                      <td>{session.topic || 'Lecture'}</td>
+                      <td>
+                        <span
+                          className={`status-pill ${
+                            session.status === 'completed' ? 'info' : 'success'
+                          }`}
+                        >
+                          {session.status || 'completed'}
+                        </span>
+                      </td>
+                      <td>{session.student_count || 0}</td>
+                      <td>
+                        <div className="button-group" style={{ gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                            onClick={() => handleDownloadSession(session.id)}
+                            disabled={downloadingSessionId === session.id}
+                            title="Download single session attendance report as Excel"
+                          >
+                            {downloadingSessionId === session.id
+                              ? 'Exporting...'
+                              : '📥 Report'}
+                          </button>
+                          <button
+                            type="button"
+                            className="primary-button"
+                            style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                            onClick={() => handleOpenSessionModal(session)}
+                            title="Manually mark or edit student attendance"
+                          >
+                            ✏️ Mark
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              {!isLoadingSessions && sessions.length === 0 && (
+                <tr>
+                  <td colSpan="5" className="empty-cell">
+                    No sessions recorded for this module yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* ENROLLED STUDENTS SECTION */}
       <section className="card">
         <div className="card-header row">
           <div>
@@ -233,6 +605,14 @@ const lecturerName =
               Attendance totals for enrolled students.
             </span>
           </div>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={handleExportClick}
+            title="Download attendance records as Excel file"
+          >
+            📥 Overall Matrix Export
+          </button>
         </div>
 
         {errorMessage && <span className="field-error">{errorMessage}</span>}
@@ -266,9 +646,7 @@ const lecturerName =
                 const absentCount = getCount(student, 'absence_counts', keyToUse)
                 const total = presentCount + absentCount
                 const percentage =
-                  total === 0
-                    ? 0
-                    : Math.round((presentCount / total) * 100)
+                  total === 0 ? 0 : Math.round((presentCount / total) * 100)
                 return (
                   <tr key={student.uid || student.id}>
                     <td>{student.reg_no || '—'}</td>
@@ -302,6 +680,7 @@ const lecturerName =
         </section>
       )}
 
+      {/* OVERALL ATTENDANCE EXCEL MODAL */}
       <AttendanceExportModal
         isOpen={isExportModalOpen}
         moduleName={moduleData?.name}
@@ -310,8 +689,396 @@ const lecturerName =
         onExport={handleExport}
         isLoading={isExporting}
       />
+
+      {/* MANUAL SESSION ATTENDANCE EDIT MODAL */}
+      {activeSessionModal && (
+        <div
+          className="modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCloseSessionModalWithCheck()
+            }
+          }}
+        >
+          <div
+            className="modal-card"
+            style={{ width: 'min(980px, 95vw)', maxHeight: '90vh' }}
+          >
+            <div className="modal-header">
+              <div>
+                <p className="modal-title">
+                  Session Attendance: {activeSessionModal.topic || 'Lecture'}
+                </p>
+                <p className="helper-text">
+                  Date: {formatDateDisplay(activeSessionModal.started_at)} | Module:{' '}
+                  {moduleData.code}
+                </p>
+              </div>
+              <div
+                className="button-group"
+                style={{ alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}
+              >
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={handleSavePendingAttendance}
+                  disabled={Object.keys(pendingChanges).length === 0 || isSavingAttendance}
+                  title="Save attendance changes to server"
+                  style={{ padding: '6px 14px', fontSize: '0.85rem' }}
+                >
+                  {isSavingAttendance
+                    ? 'Saving...'
+                    : `Save changes${
+                        Object.keys(pendingChanges).length > 0
+                          ? ` (${Object.keys(pendingChanges).length})`
+                          : ''
+                      }`}
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={handleDiscardChanges}
+                  disabled={Object.keys(pendingChanges).length === 0 || isSavingAttendance}
+                  title="Discard unsaved changes"
+                  style={{ padding: '6px 14px', fontSize: '0.85rem' }}
+                >
+                  Discard
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => handleDownloadSessionWithCheck(activeSessionModal.id)}
+                  disabled={downloadingSessionId === activeSessionModal.id || isSavingAttendance}
+                  title="Download session Excel report (uses saved data)"
+                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                >
+                  {downloadingSessionId === activeSessionModal.id
+                    ? 'Exporting...'
+                    : '📥 Download Report'}
+                </button>
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={handleCloseSessionModalWithCheck}
+                  disabled={isSavingAttendance}
+                  style={{ padding: '6px 12px', fontSize: '0.85rem' }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+
+            {saveErrorMessage && (
+              <div
+                style={{
+                  padding: '8px 12px',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '6px',
+                  color: '#991b1b',
+                  fontSize: '0.85rem',
+                  whiteSpace: 'pre-line',
+                }}
+              >
+                {saveErrorMessage}
+              </div>
+            )}
+
+            {isLoadingReport && (
+              <div className="empty-state">Loading student attendance...</div>
+            )}
+
+            {!isLoadingReport && sessionReportData && (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px',
+                  overflow: 'hidden',
+                }}
+              >
+                {/* Stats row - live values */}
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                    gap: '12px',
+                  }}
+                >
+                  <div
+                    style={{
+                      background: '#f8fafc',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <span className="helper-text">Enrolled</span>
+                    <h4 style={{ margin: '4px 0 0' }}>
+                      {liveSessionStats.total_students}
+                    </h4>
+                  </div>
+                  <div
+                    style={{
+                      background: '#f0fdf4',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <span
+                      className="helper-text"
+                      style={{ color: '#16a34a' }}
+                    >
+                      Present
+                    </span>
+                    <h4 style={{ margin: '4px 0 0', color: '#16a34a' }}>
+                      {liveSessionStats.total_present}
+                    </h4>
+                  </div>
+                  <div
+                    style={{
+                      background: '#fef2f2',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <span
+                      className="helper-text"
+                      style={{ color: '#dc2626' }}
+                    >
+                      Absent
+                    </span>
+                    <h4 style={{ margin: '4px 0 0', color: '#dc2626' }}>
+                      {liveSessionStats.total_absent}
+                    </h4>
+                  </div>
+                  <div
+                    style={{
+                      background: '#eff6ff',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <span
+                      className="helper-text"
+                      style={{ color: '#2563eb' }}
+                    >
+                      Excused
+                    </span>
+                    <h4 style={{ margin: '4px 0 0', color: '#2563eb' }}>
+                      {liveSessionStats.total_excused}
+                    </h4>
+                  </div>
+                  <div
+                    style={{
+                      background: '#faf5ff',
+                      padding: '10px',
+                      borderRadius: '8px',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <span
+                      className="helper-text"
+                      style={{ color: '#9333ea' }}
+                    >
+                      Rate
+                    </span>
+                    <h4 style={{ margin: '4px 0 0', color: '#9333ea' }}>
+                      {liveSessionStats.attendance_percentage}%
+                    </h4>
+                  </div>
+                </div>
+
+                {/* Filter input */}
+                <div className="filters" style={{ margin: 0 }}>
+                  <input
+                    type="search"
+                    placeholder="Filter by reg no"
+                    value={sessionSearch}
+                    onChange={(e) => setSessionSearch(e.target.value)}
+                  />
+                </div>
+
+                {/* Students list */}
+                <div
+                  className="table-wrap"
+                  style={{ maxHeight: '45vh', overflowY: 'auto' }}
+                >
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>No</th>
+                        <th>Student Number</th>
+                        <th>Status</th>
+                        <th>Time Marked</th>
+                        <th>Mark / Change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredSessionRecords.map((st, idx) => {
+                        const studentUid = st.student_uid
+                        const isPending = pendingChanges[studentUid] !== undefined
+                        const effectiveCategory = isPending
+                          ? pendingChanges[studentUid]
+                          : getStudentSavedCategory(st)
+
+                        const statusBadge =
+                          effectiveCategory === 'Present' || effectiveCategory === 'Late'
+                            ? 'success'
+                            : effectiveCategory === 'Excused'
+                            ? 'info'
+                            : 'danger'
+
+                        return (
+                          <tr key={studentUid}>
+                            <td>{idx + 1}</td>
+                            <td>
+                              <strong>{st.reg_no}</strong>
+                            </td>
+                            <td>
+                              <span className={`status-pill ${statusBadge}`}>
+                                {effectiveCategory}
+                              </span>
+                              {isPending && (
+                                <span
+                                  className="unsaved-marker"
+                                  style={{
+                                    marginLeft: '6px',
+                                    fontSize: '0.7rem',
+                                    padding: '2px 5px',
+                                    borderRadius: '4px',
+                                    background: '#fef3c7',
+                                    color: '#b45309',
+                                    fontWeight: '600',
+                                    display: 'inline-block',
+                                  }}
+                                  title="Unsaved change"
+                                >
+                                  • unsaved
+                                </span>
+                              )}
+                            </td>
+                            <td>{isPending ? 'Pending save' : st.time_marked}</td>
+                            <td>
+                              <div
+                                className="button-group"
+                                style={{ gap: '6px' }}
+                              >
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight:
+                                      effectiveCategory === 'Present' ? '700' : '400',
+                                    borderColor:
+                                      effectiveCategory === 'Present'
+                                        ? (isPending ? '#d97706' : '#16a34a')
+                                        : undefined,
+                                    backgroundColor:
+                                      effectiveCategory === 'Present' ? '#f0fdf4' : undefined,
+                                  }}
+                                  disabled={isSavingAttendance}
+                                  onClick={() =>
+                                    handleStageStatusChange(studentUid, 'Present')
+                                  }
+                                >
+                                  Present
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight:
+                                      effectiveCategory === 'Late' ? '700' : '400',
+                                    borderColor:
+                                      effectiveCategory === 'Late'
+                                        ? (isPending ? '#d97706' : '#16a34a')
+                                        : undefined,
+                                    backgroundColor:
+                                      effectiveCategory === 'Late' ? '#f0fdf4' : undefined,
+                                  }}
+                                  disabled={isSavingAttendance}
+                                  onClick={() =>
+                                    handleStageStatusChange(studentUid, 'Late')
+                                  }
+                                >
+                                  Late
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button"
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight:
+                                      effectiveCategory === 'Excused' ? '700' : '400',
+                                    borderColor:
+                                      effectiveCategory === 'Excused'
+                                        ? (isPending ? '#d97706' : '#2563eb')
+                                        : undefined,
+                                    backgroundColor:
+                                      effectiveCategory === 'Excused' ? '#eff6ff' : undefined,
+                                  }}
+                                  disabled={isSavingAttendance}
+                                  onClick={() =>
+                                    handleStageStatusChange(studentUid, 'Excused')
+                                  }
+                                >
+                                  Excused
+                                </button>
+                                <button
+                                  type="button"
+                                  className="ghost-button danger"
+                                  style={{
+                                    padding: '4px 8px',
+                                    fontSize: '0.8rem',
+                                    fontWeight:
+                                      effectiveCategory === 'Absent' ? '700' : '400',
+                                    borderColor:
+                                      effectiveCategory === 'Absent'
+                                        ? (isPending ? '#d97706' : '#dc2626')
+                                        : undefined,
+                                    backgroundColor:
+                                      effectiveCategory === 'Absent' ? '#fef2f2' : undefined,
+                                  }}
+                                  disabled={isSavingAttendance}
+                                  onClick={() =>
+                                    handleStageStatusChange(studentUid, 'Absent')
+                                  }
+                                >
+                                  Absent
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {filteredSessionRecords.length === 0 && (
+                        <tr>
+                          <td colSpan="5" className="empty-cell">
+                            No students match your filter.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-export default ModuleDetailsPage
+export default ModuleDetailsPage
