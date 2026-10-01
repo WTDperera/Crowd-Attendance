@@ -273,7 +273,7 @@ function DashboardPage() {
         )}
       </section>
 
-      <section className="card chart-card">
+      {/* <section className="card chart-card">
         <div className="card-header row">
           <div>
             <span className="eyebrow">Attendance</span>
@@ -349,7 +349,7 @@ function DashboardPage() {
             </div>
           </div>
         )}
-      </section>
+      </section> */}
     </div>
   )
 }
