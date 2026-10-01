@@ -7,6 +7,7 @@ import {
   downloadSessionExcel,
 } from '../services/attendanceExportService'
 import {
+  getModuleAttendanceSummary,
   getModuleSessions,
   getSessionReport,
   markStudentAttendance,
@@ -24,6 +25,10 @@ function ModuleDetailsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState('')
   const [search, setSearch] = useState('')
+
+  // Computed module attendance summary from completed sessions
+  const [attendanceSummary, setAttendanceSummary] = useState(null)
+  const [isLoadingSummary, setIsLoadingSummary] = useState(true)
 
   // Sessions state
   const [sessions, setSessions] = useState([])
@@ -78,6 +83,18 @@ function ModuleDetailsPage() {
     }
   }
 
+  const fetchSummary = async () => {
+    try {
+      setIsLoadingSummary(true)
+      const data = await getModuleAttendanceSummary(moduleKey)
+      setAttendanceSummary(data)
+    } catch (err) {
+      console.error('Failed to load module attendance summary:', err)
+    } finally {
+      setIsLoadingSummary(false)
+    }
+  }
+
   useEffect(() => {
     let isMounted = true
     let unsubscribeStudents
@@ -124,6 +141,7 @@ function ModuleDetailsPage() {
     fetchModule().then(() => {
       subscribeStudents()
       fetchSessions()
+      fetchSummary()
     })
 
     return () => {
@@ -317,6 +335,7 @@ function ModuleDetailsPage() {
       const freshData = await getSessionReport(activeSessionModal.id)
       setSessionReportData(freshData)
       fetchSessions()
+      fetchSummary()
     } catch (err) {
       console.error('Error refreshing session report:', err)
     }
@@ -600,7 +619,17 @@ function ModuleDetailsPage() {
       <section className="card">
         <div className="card-header row">
           <div>
-            <h4>Enrolled Students</h4>
+            <h4>
+              Enrolled Students
+              {isLoadingSummary && (
+                <span
+                  className="helper-text"
+                  style={{ fontSize: '0.8rem', marginLeft: '8px', fontWeight: 'normal' }}
+                >
+                  (Refreshing...)
+                </span>
+              )}
+            </h4>
             <span className="helper-text">
               Attendance totals for enrolled students.
             </span>
@@ -640,22 +669,27 @@ function ModuleDetailsPage() {
             </thead>
             <tbody>
               {filteredStudents.map((student) => {
-                const primaryValue = getCount(student, 'attendance_counts', moduleKey)
-                const keyToUse = primaryValue !== 0 ? moduleKey : fallbackKey
-                const presentCount = getCount(student, 'attendance_counts', keyToUse)
-                const absentCount = getCount(student, 'absence_counts', keyToUse)
-                const total = presentCount + absentCount
-                const percentage =
-                  total === 0 ? 0 : Math.round((presentCount / total) * 100)
+                const studentUid = student.uid || student.id
+                const stats = attendanceSummary?.summary_by_uid?.[studentUid]
+                const totalSessions = attendanceSummary?.total_sessions ?? 0
+
+                const presentCount = stats ? stats.present : 0
+                const absentCount = stats ? stats.absent : totalSessions
+                const total = stats ? stats.total : totalSessions
+                const percentage = stats ? Math.round(stats.percentage) : 0
+                const isCellLoading = isLoadingSummary && !attendanceSummary
+
                 return (
-                  <tr key={student.uid || student.id}>
+                  <tr key={studentUid}>
                     <td>{student.reg_no || '—'}</td>
                     <td>{student.email || '—'}</td>
-                    <td>{presentCount}</td>
-                    <td>{absentCount}</td>
-                    <td>{total}</td>
+                    <td>{isCellLoading ? '...' : presentCount}</td>
+                    <td>{isCellLoading ? '...' : absentCount}</td>
+                    <td>{isCellLoading ? '...' : total}</td>
                     <td>
-                      <span className="status-pill info">{percentage}%</span>
+                      <span className="status-pill info">
+                        {isCellLoading ? '...' : `${percentage}%`}
+                      </span>
                     </td>
                   </tr>
                 )
@@ -663,7 +697,9 @@ function ModuleDetailsPage() {
               {filteredStudents.length === 0 && (
                 <tr>
                   <td colSpan="6" className="empty-cell">
-                    {students.length === 0
+                    {isLoading
+                      ? 'Loading enrolled students...'
+                      : students.length === 0
                       ? 'No students enrolled.'
                       : 'No students match your filters.'}
                   </td>

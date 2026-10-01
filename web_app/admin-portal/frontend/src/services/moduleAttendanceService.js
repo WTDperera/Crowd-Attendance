@@ -14,11 +14,16 @@ const getIdToken = async () => {
   return currentUser.getIdToken()
 }
 
+/**
+ * Fetches computed attendance summary for all enrolled students based on completed sessions
+ * @param {string} moduleId
+ * @returns {Promise<Object>} { total_sessions, students, summary_by_uid }
+ */
 export const getModuleAttendanceSummary = async (moduleId) => {
   const token = await getIdToken()
 
   try {
-    const response = await api.get(`/api/modules/${moduleId}/attendance-summary`, {
+    const response = await api.get(`/api/attendance/module/${moduleId}/summary`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -27,9 +32,11 @@ export const getModuleAttendanceSummary = async (moduleId) => {
     return response.data
   } catch (error) {
     const message = error?.response?.data?.message
-    throw new Error(message || 'Unable to fetch attendance summary.')
+    throw new Error(message || 'Unable to fetch module attendance summary.')
   }
 }
+
+export const getModuleAttendanceRecordsSummary = getModuleAttendanceSummary
 
 export const getStudentAttendanceDetails = async (moduleId, uid) => {
   const token = await getIdToken()

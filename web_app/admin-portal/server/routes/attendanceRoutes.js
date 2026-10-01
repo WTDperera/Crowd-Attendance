@@ -548,6 +548,184 @@ router.post('/session/:sessionId/mark', verifyFirebaseToken, requireLecturer, as
   }
 });
 
+// GET /api/attendance/module/:moduleId/summary - Module attendance summary computed from completed sessions
+router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, async (req, res) => {
+  const { moduleId } = req.params;
+
+  try {
+    if (!moduleId) {
+      return res.status(400).json({ message: 'Module ID is required.' });
+    }
+
+    const normalizedModuleId = moduleId.trim().toUpperCase();
+
+    // Get module details
+    let moduleDoc = await db.collection('modules').doc(normalizedModuleId).get();
+    if (!moduleDoc.exists) {
+      const moduleQuery = await db
+        .collection('modules')
+        .where('module_id', '==', normalizedModuleId)
+        .limit(1)
+        .get();
+      moduleDoc = moduleQuery.docs[0];
+    }
+
+    if (!moduleDoc || !moduleDoc.exists) {
+      return res.status(404).json({ message: 'Module not found.' });
+    }
+
+    const moduleData = normalizeModule(moduleDoc);
+    if (moduleData.lecturer_id !== req.user.uid) {
+      return res.status(403).json({ message: 'You do not have permission to view this module.' });
+    }
+
+    // 1. Fetch completed sessions for this module owned by caller
+    const moduleKeys = Array.from(
+      new Set([normalizedModuleId, moduleData.module_id, moduleData.module_code].filter(Boolean))
+    );
+
+    const sessionQueries = [];
+    moduleKeys.forEach((key) => {
+      sessionQueries.push(
+        db.collection('active_sessions').where('module_id', '==', key).where('status', '==', 'completed').get()
+      );
+      sessionQueries.push(
+        db.collection('active_sessions').where('module_code', '==', key).where('status', '==', 'completed').get()
+      );
+    });
+
+    const sessionSnapshots = await Promise.all(sessionQueries);
+    const sessionMap = new Map();
+    sessionSnapshots.forEach((snap) => {
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        if (data.lecturer_id === req.user.uid) {
+          sessionMap.set(doc.id, {
+            id: doc.id,
+            topic: data.topic || data.session_topic || 'Session',
+            status: data.status || 'completed',
+          });
+        }
+      });
+    });
+
+    const completedSessions = Array.from(sessionMap.values());
+    const completedSessionIds = new Set(sessionMap.keys());
+    const totalSessions = completedSessions.length;
+
+    // 2. Fetch all enrolled students
+    const studentSnapshots = await Promise.all(
+      moduleKeys.map((key) =>
+        db.collection('students').where(ENROLL_FIELD, 'array-contains', key).get()
+      )
+    );
+
+    const studentMap = new Map();
+    studentSnapshots.forEach((snap) => {
+      snap.docs.forEach((doc) => {
+        if (!studentMap.has(doc.id)) {
+          const data = doc.data();
+          studentMap.set(doc.id, {
+            uid: doc.id,
+            reg_no: data.reg_no || '',
+            name: formatStudentName(data),
+            email: data.email || '',
+          });
+        }
+      });
+    });
+
+    const students = Array.from(studentMap.values()).sort((a, b) =>
+      (a.reg_no || '').localeCompare(b.reg_no || '', undefined, { numeric: true, sensitivity: 'base' })
+    );
+
+    // 3. Bulk fetch attendance and absence records (including legacy singular collections)
+    const recordCollections = [
+      'attendance_records',
+      'attendance_record',
+      'absence_records',
+      'absence_record',
+    ];
+
+    const recordQueries = [];
+    recordCollections.forEach((coll) => {
+      moduleKeys.forEach((key) => {
+        recordQueries.push(db.collection(coll).where('module_id', '==', key).get());
+        recordQueries.push(db.collection(coll).where('module_code', '==', key).get());
+      });
+    });
+
+    const recordSnapshots = await Promise.all(recordQueries);
+    const attendanceRecordsMap = new Map();
+
+    recordSnapshots.forEach((snap) => {
+      snap.docs.forEach((doc) => {
+        const data = doc.data();
+        const uid = data.student_uid || data.student_id;
+        const sId = data.session_id;
+        if (uid && sId && completedSessionIds.has(sId)) {
+          const existing = attendanceRecordsMap.get(`${sId}_${uid}`);
+          const statusLower = String(data.status || '').trim().toLowerCase();
+          if (!existing || statusLower === 'present' || data.excused === true) {
+            attendanceRecordsMap.set(`${sId}_${uid}`, data);
+          }
+        }
+      });
+    });
+
+    // 4. Calculate attendance per enrolled student
+    // Rules matching Excel export:
+    // status 'present' (including late and excused) = present
+    // left_early and pending count as 0
+    // absent = totalSessions - present
+    // percentage = totalSessions > 0 ? (present / totalSessions) * 100 : 0
+    const summaryByUid = {};
+    const studentSummaries = students.map((st) => {
+      let presentCount = 0;
+
+      completedSessions.forEach((session) => {
+        const key = `${session.id}_${st.uid}`;
+        const att = attendanceRecordsMap.get(key);
+
+        if (att) {
+          const statusLower = String(att.status || '').trim().toLowerCase();
+          if (statusLower === 'present' || att.excused === true || att.marked_late === true) {
+            presentCount += 1;
+          }
+        }
+      });
+
+      const absentCount = totalSessions - presentCount;
+      const percentage = totalSessions > 0
+        ? Math.round((presentCount / totalSessions) * 10000) / 100
+        : 0;
+
+      const summary = {
+        student_uid: st.uid,
+        reg_no: st.reg_no,
+        name: st.name,
+        email: st.email,
+        present: presentCount,
+        absent: absentCount,
+        total: totalSessions,
+        percentage,
+      };
+
+      summaryByUid[st.uid] = summary;
+      return summary;
+    });
+
+    return res.json({
+      total_sessions: totalSessions,
+      students: studentSummaries,
+      summary_by_uid: summaryByUid,
+    });
+  } catch (error) {
+    console.error('Error generating module attendance summary:', error);
+    return res.status(500).json({ message: 'Unable to fetch module attendance summary right now.' });
+  }
+});
+
 // GET /api/attendance/export - Overall module export matrix (Fixed bulk fetch, no N+1 loop)
 router.get('/export', verifyFirebaseToken, requireLecturer, async (req, res) => {
   const { moduleId, startDate, endDate } = req.query;
