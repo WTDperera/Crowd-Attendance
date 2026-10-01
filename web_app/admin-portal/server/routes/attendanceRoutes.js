@@ -548,6 +548,201 @@ router.post('/session/:sessionId/mark', verifyFirebaseToken, requireLecturer, as
   }
 });
 
+// Collections holding attendance & absence records
+const RECORD_COLLECTIONS = [
+  'attendance_records',
+  'attendance_record',
+  'absence_records',
+  'absence_record',
+];
+
+// Helper to determine if an attendance record qualifies as 'present'
+// Rule: completed sessions; present, late and excused count as present; left_early and pending count as absent
+const isPresentRecord = (record) => {
+  if (!record) return false;
+  const statusLower = String(record.status || '').trim().toLowerCase();
+  if (statusLower === 'left_early' || statusLower === 'pending') {
+    return false;
+  }
+  return (
+    statusLower === 'present' ||
+    statusLower === 'late' ||
+    record.excused === true ||
+    record.marked_late === true
+  );
+};
+
+// Helper to register attendance records into map prioritizing present/excused status
+const addRecordToMap = (map, data, validSessionIds) => {
+  if (!data) return;
+  const uid = data.student_uid || data.student_id;
+  const sId = data.session_id;
+  if (!uid || !sId) return;
+  if (validSessionIds && !validSessionIds.has(sId)) return;
+
+  const key = `${sId}_${uid}`;
+  const existing = map.get(key);
+  if (!existing || isPresentRecord(data)) {
+    map.set(key, data);
+  }
+};
+
+// GET /api/attendance/dashboard-summary - Attendance performance per module for the logged-in lecturer
+router.get('/dashboard-summary', verifyFirebaseToken, requireLecturer, async (req, res) => {
+  try {
+    // 1. Fetch all modules owned by this lecturer
+    const modulesSnapshot = await db
+      .collection('modules')
+      .where('lecturer_id', '==', req.user.uid)
+      .get();
+
+    if (modulesSnapshot.empty) {
+      if (req.query.format === 'object') {
+        return res.json({ modules: [] });
+      }
+      return res.json([]);
+    }
+
+    const modulesList = modulesSnapshot.docs.map((doc) => {
+      const data = doc.data() || {};
+      const code = (data.code || data.module_code || data.module_id || doc.id || '').trim().toUpperCase();
+      const name = data.name || data.module_name || '';
+      const id = doc.id;
+      const keys = new Set(
+        [
+          id.trim().toUpperCase(),
+          (data.module_id || '').trim().toUpperCase(),
+          (data.code || '').trim().toUpperCase(),
+          (data.module_code || '').trim().toUpperCase(),
+        ].filter(Boolean)
+      );
+
+      return {
+        id,
+        code,
+        name,
+        keys,
+        completedSessions: [],
+        enrolledStudentUids: new Set(),
+      };
+    });
+
+    const allKeys = Array.from(new Set(modulesList.flatMap((m) => Array.from(m.keys))));
+
+    // 2. Fetch completed sessions owned by this lecturer in bulk
+    const sessionsSnapshot = await db
+      .collection('active_sessions')
+      .where('lecturer_id', '==', req.user.uid)
+      .get();
+
+    const completedSessionIds = new Set();
+    sessionsSnapshot.docs.forEach((doc) => {
+      const data = doc.data() || {};
+      if (data.status === 'completed') {
+        const rawModuleId = (data.module_id || data.module_code || '').trim().toUpperCase();
+        const matchedModule = modulesList.find((m) => m.keys.has(rawModuleId));
+        if (matchedModule) {
+          const sessionObj = {
+            id: doc.id,
+            topic: data.topic || data.session_topic || 'Session',
+            status: data.status,
+          };
+          matchedModule.completedSessions.push(sessionObj);
+          completedSessionIds.add(doc.id);
+        }
+      }
+    });
+
+    // 3. Fetch all students in bulk to compute enrolled counts per module
+    const studentsSnapshot = await db.collection('students').get();
+    studentsSnapshot.docs.forEach((studentDoc) => {
+      const data = studentDoc.data() || {};
+      const enrolledModuleIds = Array.isArray(data.enrolled_module_ids)
+        ? data.enrolled_module_ids.map((id) => String(id).trim().toUpperCase())
+        : [];
+
+      modulesList.forEach((mod) => {
+        if (enrolledModuleIds.some((id) => mod.keys.has(id))) {
+          mod.enrolledStudentUids.add(studentDoc.id);
+        }
+      });
+    });
+
+    // 4. Fetch attendance records in bulk if there are completed sessions
+    const attendanceRecordsMap = new Map();
+    if (completedSessionIds.size > 0 && allKeys.length > 0) {
+      const chunks = [];
+      for (let i = 0; i < allKeys.length; i += 30) {
+        chunks.push(allKeys.slice(i, i + 30));
+      }
+
+      const recordQueries = [];
+      RECORD_COLLECTIONS.forEach((coll) => {
+        chunks.forEach((chunk) => {
+          recordQueries.push(db.collection(coll).where('module_id', 'in', chunk).get());
+          recordQueries.push(db.collection(coll).where('module_code', 'in', chunk).get());
+        });
+      });
+
+      const recordSnapshots = await Promise.all(recordQueries);
+      recordSnapshots.forEach((snap) => {
+        snap.docs.forEach((doc) => {
+          addRecordToMap(attendanceRecordsMap, doc.data(), completedSessionIds);
+        });
+      });
+    }
+
+    // 5. Compute metrics for each module
+    const result = modulesList
+      .map((mod) => {
+        const enrolledCount = mod.enrolledStudentUids.size;
+        const completedSessionsCount = mod.completedSessions.length;
+        let presentMarks = 0;
+
+        if (completedSessionsCount > 0 && enrolledCount > 0) {
+          for (const uid of mod.enrolledStudentUids) {
+            for (const session of mod.completedSessions) {
+              const key = `${session.id}_${uid}`;
+              const att = attendanceRecordsMap.get(key);
+              if (isPresentRecord(att)) {
+                presentMarks += 1;
+              }
+            }
+          }
+        }
+
+        const totalPossible = enrolledCount * completedSessionsCount;
+        const absentMarks = totalPossible > 0 ? totalPossible - presentMarks : 0;
+        const percentage =
+          totalPossible > 0
+            ? Math.round((presentMarks / totalPossible) * 10000) / 100
+            : 0;
+
+        return {
+          code: mod.code,
+          name: mod.name,
+          enrolledCount,
+          completedSessions: completedSessionsCount,
+          presentMarks,
+          absentMarks,
+          percentage,
+          moduleId: mod.code,
+          moduleName: mod.name,
+        };
+      })
+      .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }));
+
+    if (req.query.format === 'object') {
+      return res.json({ modules: result });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error('Error fetching dashboard summary:', error);
+    return res.status(500).json({ message: 'Unable to fetch dashboard summary right now.' });
+  }
+});
+
 // GET /api/attendance/module/:moduleId/summary - Module attendance summary computed from completed sessions
 router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, async (req, res) => {
   const { moduleId } = req.params;
@@ -640,15 +835,8 @@ router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, as
     );
 
     // 3. Bulk fetch attendance and absence records (including legacy singular collections)
-    const recordCollections = [
-      'attendance_records',
-      'attendance_record',
-      'absence_records',
-      'absence_record',
-    ];
-
     const recordQueries = [];
-    recordCollections.forEach((coll) => {
+    RECORD_COLLECTIONS.forEach((coll) => {
       moduleKeys.forEach((key) => {
         recordQueries.push(db.collection(coll).where('module_id', '==', key).get());
         recordQueries.push(db.collection(coll).where('module_code', '==', key).get());
@@ -660,16 +848,7 @@ router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, as
 
     recordSnapshots.forEach((snap) => {
       snap.docs.forEach((doc) => {
-        const data = doc.data();
-        const uid = data.student_uid || data.student_id;
-        const sId = data.session_id;
-        if (uid && sId && completedSessionIds.has(sId)) {
-          const existing = attendanceRecordsMap.get(`${sId}_${uid}`);
-          const statusLower = String(data.status || '').trim().toLowerCase();
-          if (!existing || statusLower === 'present' || data.excused === true) {
-            attendanceRecordsMap.set(`${sId}_${uid}`, data);
-          }
-        }
+        addRecordToMap(attendanceRecordsMap, doc.data(), completedSessionIds);
       });
     });
 
@@ -687,11 +866,8 @@ router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, as
         const key = `${session.id}_${st.uid}`;
         const att = attendanceRecordsMap.get(key);
 
-        if (att) {
-          const statusLower = String(att.status || '').trim().toLowerCase();
-          if (statusLower === 'present' || att.excused === true || att.marked_late === true) {
-            presentCount += 1;
-          }
+        if (isPresentRecord(att)) {
+          presentCount += 1;
         }
       });
 

@@ -4,6 +4,8 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -33,25 +35,69 @@ const STAT_CARDS = [
 
 const ENROLLMENT_COLOR = '#4f46e5'
 
-const getAttendanceColor = (value) => {
+const getAttendanceColor = (value, completedSessions) => {
+  if (completedSessions === 0) return 'transparent'
   if (value >= 80) return '#16a34a'
-  if (value >= 50) return '#d97706'
+  if (value >= 60) return '#d97706'
   return '#dc2626'
 }
 
-function ChartTooltip({ active, payload, label, valueLabel }) {
+function AttendanceTooltip({ active, payload }) {
   if (!active || !payload || !payload.length) {
     return null
   }
 
   const row = payload[0].payload
+  const code = row.code || row.moduleId || ''
+  const name = row.name || row.moduleName || ''
+  const title = name ? `${code} - ${name}` : code
 
   return (
     <div className="chart-tooltip">
-      <p className="chart-tooltip-title">{label}</p>
-      {row.moduleName && <p className="chart-tooltip-sub">{row.moduleName}</p>}
+      <p className="chart-tooltip-title">{title}</p>
+      {row.completedSessions === 0 ? (
+        <p className="chart-tooltip-value" style={{ marginTop: 4, color: '#94a3b8' }}>
+          No sessions yet
+        </p>
+      ) : (
+        <>
+          <p className="chart-tooltip-value">
+            Attendance: <strong>{Math.round(row.percentage)}%</strong>
+          </p>
+          <p className="chart-tooltip-value">
+            Present marks: <strong>{row.presentMarks}</strong>
+          </p>
+          <p className="chart-tooltip-value">
+            Absent marks: <strong>{row.absentMarks}</strong>
+          </p>
+          <p className="chart-tooltip-value">
+            Sessions: <strong>{row.completedSessions}</strong>
+          </p>
+          <p className="chart-tooltip-value">
+            Enrolled: <strong>{row.enrolledCount}</strong>
+          </p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function EnrollmentTooltip({ active, payload }) {
+  if (!active || !payload || !payload.length) {
+    return null
+  }
+
+  const row = payload[0].payload
+  const name = row.moduleName || row.name || row.moduleId || 'Module'
+  const count = row.count ?? 0
+  const total = row.totalStudents ?? 0
+  const pct = row.percentage ?? 0
+
+  return (
+    <div className="chart-tooltip">
+      <p className="chart-tooltip-title">{name}</p>
       <p className="chart-tooltip-value">
-        {valueLabel}: <strong>{row.percentage}%</strong>
+        {count} of {total} students ({pct}%)
       </p>
     </div>
   )
@@ -175,6 +221,43 @@ function DashboardPage() {
   const hasEnrollmentRows = enrollmentRows.length > 0
   const hasAttendanceRows = attendanceRows.length > 0
 
+  const renderEnrollmentLabel = (props) => {
+    const { x, y, width, value } = props
+    if (value === undefined || value === null) return null
+    return (
+      <text
+        x={x + width / 2}
+        y={y - 8}
+        fill="#475569"
+        textAnchor="middle"
+        fontSize={12}
+        fontWeight={600}
+      >
+        {`${value} student${value === 1 ? '' : 's'}`}
+      </text>
+    )
+  }
+
+  const renderAttendanceLabel = (props) => {
+    const { x, y, width, index } = props
+    const row = attendanceRows[index]
+    if (!row) return null
+    const isNoSessions = row.completedSessions === 0
+    const text = isNoSessions ? 'No sessions yet' : `${Math.round(row.percentage)}%`
+    return (
+      <text
+        x={x + width / 2}
+        y={y - 8}
+        fill={isNoSessions ? '#64748b' : '#334155'}
+        textAnchor="middle"
+        fontSize={isNoSessions ? 11 : 12}
+        fontWeight={600}
+      >
+        {text}
+      </text>
+    )
+  }
+
   return (
     <div className="dashboard-grid">
       <section className="card">
@@ -214,7 +297,7 @@ function DashboardPage() {
             <span className="eyebrow">Enrollment</span>
             <h4>Student Enrollment per Module</h4>
             <span className="helper-text">
-              percentage of your total students enrolled in each module.
+              Students enrolled in each module
             </span>
           </div>
         </div>
@@ -228,47 +311,65 @@ function DashboardPage() {
         )}
 
         {!isEnrollmentLoading && !enrollmentError && !hasEnrollmentRows && (
-          <p className="empty-cell">No module enrollments to display yet.</p>
+          <p className="empty-cell">No modules found for your account.</p>
         )}
 
         {!isEnrollmentLoading && !enrollmentError && hasEnrollmentRows && (
-          <div className="chart-wrap">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                data={enrollmentRows}
-                margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#e2e8f0"
-                />
-                <XAxis
-                  dataKey="moduleId"
-                  tick={{ fontSize: 12, fill: '#475569' }}
-                  axisLine={{ stroke: '#e2e8f0' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  domain={[0, 100]}
-                  tickFormatter={(value) => `${value}%`}
-                  tick={{ fontSize: 12, fill: '#475569' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(79, 70, 229, 0.06)' }}
-                  content={<ChartTooltip valueLabel="Enrolled" />}
-                />
-                <Bar
-                  dataKey="percentage"
-                  fill={ENROLLMENT_COLOR}
-                  radius={[6, 6, 0, 0]}
-                  maxBarSize={48}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          <div
+            className="chart-wrap"
+            style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+          >
+            <div
+              style={{
+                minWidth:
+                  enrollmentRows.length > 6
+                    ? `${enrollmentRows.length * 80}px`
+                    : '100%',
+              }}
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={enrollmentRows}
+                  margin={{ top: 24, right: 16, left: 0, bottom: 8 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
+                  <XAxis
+                    dataKey="moduleId"
+                    tick={{ fontSize: 12, fill: '#475569' }}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
+                    interval={0}
+                    angle={enrollmentRows.length > 5 ? -25 : 0}
+                    textAnchor={enrollmentRows.length > 5 ? 'end' : 'middle'}
+                    height={enrollmentRows.length > 5 ? 45 : 30}
+                  />
+                  <YAxis
+                    allowDecimals={false}
+                    domain={[0, (dataMax) => Math.max(dataMax + 2, 5)]}
+                    tick={{ fontSize: 12, fill: '#475569' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={48}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(79, 70, 229, 0.06)' }}
+                    content={<EnrollmentTooltip />}
+                  />
+                  <Bar
+                    dataKey="count"
+                    fill={ENROLLMENT_COLOR}
+                    radius={[6, 6, 0, 0]}
+                    maxBarSize={56}
+                  >
+                    <LabelList dataKey="count" content={renderEnrollmentLabel} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
         )}
       </section>
@@ -279,7 +380,7 @@ function DashboardPage() {
             <span className="eyebrow">Attendance</span>
             <h4>Attendance Performance per Module</h4>
             <span className="helper-text">
-              Average attendance percentage per module you teach.
+              Attendance across completed sessions (present, late and excused count as present)
             </span>
           </div>
         </div>
@@ -293,58 +394,95 @@ function DashboardPage() {
         )}
 
         {!isAttendanceLoading && !attendanceError && !hasAttendanceRows && (
-          <p className="empty-cell">No attendance data available yet.</p>
+          <p className="empty-cell">No modules found for your account.</p>
         )}
 
         {!isAttendanceLoading && !attendanceError && hasAttendanceRows && (
-          <div className="chart-wrap">
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                data={attendanceRows}
-                margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
-               >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#e2e8f0"
-                />
-                <XAxis
-                  dataKey="moduleId"
-                  tick={{ fontSize: 12, fill: '#475569' }}
-                  axisLine={{ stroke: '#e2e8f0' }}
-                  tickLine={false}
-                />
-                <YAxis
-                  domain={[0, 100]}
-                  tickFormatter={(value) => `${value}%`}
-                  tick={{ fontSize: 12, fill: '#475569' }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={48}
-                />
-                <Tooltip
-                  cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}
-                  content={<ChartTooltip valueLabel="Attendance" />}
-                />
-                <Bar dataKey="percentage" radius={[6, 6, 0, 0]} maxBarSize={48}>
-                  {attendanceRows.map((row) => (
-                    <Cell
-                      key={row.moduleId}
-                      fill={getAttendanceColor(row.percentage)}
+          <div
+            className="chart-wrap"
+            style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}
+          >
+            <div
+              style={{
+                minWidth:
+                  attendanceRows.length > 6
+                    ? `${attendanceRows.length * 80}px`
+                    : '100%',
+              }}
+            >
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={attendanceRows}
+                  margin={{ top: 24, right: 16, left: 0, bottom: 8 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
+                  <XAxis
+                    dataKey="moduleId"
+                    tick={{ fontSize: 12, fill: '#475569' }}
+                    axisLine={{ stroke: '#e2e8f0' }}
+                    tickLine={false}
+                    interval={0}
+                    angle={attendanceRows.length > 5 ? -25 : 0}
+                    textAnchor={attendanceRows.length > 5 ? 'end' : 'middle'}
+                    height={attendanceRows.length > 5 ? 45 : 30}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    ticks={[0, 20, 40, 60, 80, 100]}
+                    tickFormatter={(value) => `${value}%`}
+                    tick={{ fontSize: 12, fill: '#475569' }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={48}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'rgba(15, 23, 42, 0.04)' }}
+                    content={<AttendanceTooltip />}
+                  />
+                  <ReferenceLine
+                    y={80}
+                    stroke="#16a34a"
+                    strokeDasharray="4 4"
+                  />
+                  <Bar dataKey="percentage" radius={[6, 6, 0, 0]} maxBarSize={56}>
+                    <LabelList
+                      dataKey="percentage"
+                      content={renderAttendanceLabel}
                     />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+                    {attendanceRows.map((row) => (
+                      <Cell
+                        key={row.moduleId}
+                        fill={getAttendanceColor(row.percentage, row.completedSessions)}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             <div className="chart-legend">
               <span>
-                <i style={{ background: '#16a34a' }} /> 75%+
+                <i style={{ background: '#16a34a' }} /> 80%+
               </span>
               <span>
-                <i style={{ background: '#d97706' }} /> 60–75%
+                <i style={{ background: '#d97706' }} /> 60–79%
               </span>
               <span>
-                <i style={{ background: '#dc2626' }} /> Below 50%
+                <i style={{ background: '#dc2626' }} /> Below 60%
+              </span>
+              <span>
+                <i
+                  style={{
+                    width: 14,
+                    height: 0,
+                    borderTop: '2px dashed #16a34a',
+                    borderRadius: 0,
+                  }}
+                />
+                80% required
               </span>
             </div>
           </div>
@@ -354,4 +492,4 @@ function DashboardPage() {
   )
 }
 
-export default DashboardPage
+export default DashboardPage
