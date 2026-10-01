@@ -1,5 +1,24 @@
+import axios from 'axios'
 import { collection, getCountFromServer, getDocs, query, where } from 'firebase/firestore'
-import { db } from '../firebase/firebase'
+import { auth, db } from '../firebase/firebase'
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000',
+})
+
+const getIdToken = async () => {
+  let currentUser = auth.currentUser
+  if (!currentUser && typeof auth.authStateReady === 'function') {
+    await auth.authStateReady()
+    currentUser = auth.currentUser
+  }
+
+  if (!currentUser) {
+    throw new Error('You must be logged in to view dashboard data.')
+  }
+
+  return currentUser.getIdToken()
+}
 
 const normalizeModuleId = (value) => {
   if (typeof value !== 'string') {
@@ -7,20 +26,6 @@ const normalizeModuleId = (value) => {
   }
 
   return value.trim().toUpperCase()
-}
-
-const getCountForModule = (student, prefix, moduleId) => {
-  const mapVal = student?.[prefix]?.[moduleId]
-  if (mapVal !== undefined && mapVal !== null) {
-    return Number(mapVal)
-  }
-
-  const flatVal = student?.[`${prefix}.${moduleId}`]
-  if (flatVal !== undefined && flatVal !== null) {
-    return Number(flatVal)
-  }
-
-  return 0
 }
 
 const getOwnModules = async (lecturerId) => {
@@ -85,7 +90,7 @@ export const getStudentCountPerModule = async (lecturerId) => {
     })
   })
 
-  return modules
+  const result = modules
     .map((module) => {
       const count = moduleCounts.get(module.moduleId) || 0
       const percentage =
@@ -95,17 +100,19 @@ export const getStudentCountPerModule = async (lecturerId) => {
 
       return {
         moduleId: module.moduleId,
+        code: module.moduleId,
         moduleName: module.moduleName,
+        name: module.moduleName,
         count,
+        enrolledCount: count,
+        totalStudents: totalDistinctStudents,
         percentage,
       }
     })
-    .sort((a, b) => {
-      if (b.percentage !== a.percentage) {
-        return b.percentage - a.percentage
-      }
-      return a.moduleId.localeCompare(b.moduleId)
-    })
+    .sort((a, b) => a.moduleId.localeCompare(b.moduleId, undefined, { numeric: true }))
+
+  result.totalStudents = totalDistinctStudents
+  return result
 }
 
 export const getTotalModulesCount = async (lecturerId) => {
@@ -138,65 +145,33 @@ export const getEnrollmentEnabledModulesCount = async (lecturerId) => {
   return modules.filter((module) => module.enrollment_enabled).length
 }
 
+export const getDashboardSummary = async (lecturerId) => {
+  const token = await getIdToken()
+  const response = await api.get('/api/attendance/dashboard-summary', {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    params: lecturerId ? { lecturerId } : {},
+  })
+
+  const data = response.data
+  return Array.isArray(data) ? data : (data?.modules || [])
+}
+
 export const getAttendancePerformancePerModule = async (lecturerId) => {
-  const [modules, studentsSnapshot] = await Promise.all([
-    getOwnModules(lecturerId),
-    getDocs(collection(db, 'students')),
-  ])
+  const rawModules = await getDashboardSummary(lecturerId)
 
-  const moduleTotals = new Map()
-  modules.forEach((module) => {
-    moduleTotals.set(module.moduleId, { present: 0, absent: 0 })
-  })
-
-  studentsSnapshot.docs.forEach((studentDoc) => {
-    const data = studentDoc.data() || {}
-    const enrolledModuleIds = Array.isArray(data.enrolled_module_ids)
-      ? data.enrolled_module_ids
-      : []
-
-    enrolledModuleIds.forEach((moduleId) => {
-      const normalizedId = normalizeModuleId(moduleId)
-      if (!normalizedId || !moduleTotals.has(normalizedId)) {
-        return
-      }
-
-      const present = getCountForModule(
-        data,
-        'attendance_counts',
-        normalizedId
-      )
-      const absent = getCountForModule(
-        data,
-        'absence_counts',
-        normalizedId
-      )
-
-      const totals = moduleTotals.get(normalizedId)
-      totals.present += present
-      totals.absent += absent
-    })
-  })
-
-  return modules
-    .map((module) => {
-      const totals = moduleTotals.get(module.moduleId) || {
-        present: 0,
-        absent: 0,
-      }
-      const total = totals.present + totals.absent
-      const percentage = total === 0 ? 0 : Math.round((totals.present / total) * 100)
-
-      return {
-        moduleId: module.moduleId,
-        moduleName: module.moduleName,
-        percentage,
-      }
-    })
-    .sort((a, b) => {
-      if (b.percentage !== a.percentage) {
-        return b.percentage - a.percentage
-      }
-      return a.moduleId.localeCompare(b.moduleId)
-    })
+  return rawModules
+    .map((mod) => ({
+      code: mod.code || mod.moduleId || '',
+      moduleId: mod.code || mod.moduleId || '',
+      name: mod.name || mod.moduleName || '',
+      moduleName: mod.name || mod.moduleName || '',
+      enrolledCount: Number(mod.enrolledCount) || 0,
+      completedSessions: Number(mod.completedSessions) || 0,
+      presentMarks: Number(mod.presentMarks) || 0,
+      absentMarks: Number(mod.absentMarks) || 0,
+      percentage: Number(mod.percentage) || 0,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true }))
 }
