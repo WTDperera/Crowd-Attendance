@@ -118,7 +118,7 @@ class ModuleService {
         'enrolled_module_ids': FieldValue.arrayUnion([code]),
       };
       if (shouldInitAttendance) {
-        updates['attendance_counts.$code'] = 0;
+        updates['attendance_counts'] = {code: 0};
       }
 
       // Create doc if missing without overwriting other fields.
