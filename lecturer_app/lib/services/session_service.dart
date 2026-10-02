@@ -215,7 +215,9 @@ class SessionService {
       // Firestore counter: increment student's attendance count for this module.
       // Uses merge so it won't overwrite other modules' counters.
       batch.set(studentRef, {
-        'attendance_counts.$moduleKey': FieldValue.increment(1),
+        'attendance_counts': {
+          moduleKey: FieldValue.increment(1)
+        }
       }, SetOptions(merge: true));
 
       await batch.commit();
