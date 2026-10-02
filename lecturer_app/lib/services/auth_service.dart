@@ -1,3 +1,4 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'device_service.dart';
@@ -7,8 +8,8 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = appAuth;
+  final FirebaseFirestore _firestore = appFirestore;
   final DeviceService _deviceService = DeviceService();
 
   User? get currentUser => _auth.currentUser;

@@ -1,3 +1,4 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,9 +23,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadLecturerData() async {
-    User? user = FirebaseAuth.instance.currentUser;
+    User? user = appAuth.currentUser;
     if (user != null) {
-      var doc = await FirebaseFirestore.instance
+      var doc = await appFirestore
           .collection('lecturers')
           .doc(user.uid)
           .get();
@@ -39,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
       DateTime now = DateTime.now();
       DateTime startOfDay = DateTime(now.year, now.month, now.day);
       
-      var sessions = await FirebaseFirestore.instance
+      var sessions = await appFirestore
           .collection('attendance_sessions')
           .where('lecturer_id', isEqualTo: user.uid)
           .where('created_at', isGreaterThanOrEqualTo: startOfDay)
@@ -249,13 +250,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Stream<QuerySnapshot> _getTodaysSessions() {
-    User? user = FirebaseAuth.instance.currentUser;
+    User? user = appAuth.currentUser;
     if (user == null) return const Stream.empty();
     
     DateTime now = DateTime.now();
     DateTime startOfDay = DateTime(now.year, now.month, now.day);
     
-    return FirebaseFirestore.instance
+    return appFirestore
         .collection('attendance_sessions')
         .where('lecturer_id', isEqualTo: user.uid)
         .where('created_at', isGreaterThanOrEqualTo: startOfDay)

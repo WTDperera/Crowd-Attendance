@@ -3,7 +3,12 @@ const { auth, db } = require('../firebaseAdmin');
 
 const router = express.Router();
 
-const FIREBASE_WEB_API_KEY = process.env.FIREBASE_WEB_API_KEY;
+const { getQaConfig } = require('../qaConfig');
+const qa = getQaConfig();
+const FIREBASE_WEB_API_KEY = qa ? 'qa-emulator-key' : process.env.FIREBASE_WEB_API_KEY;
+const identityToolkitBase = qa
+  ? `http://${qa.authHost}/identitytoolkit.googleapis.com/v1`
+  : 'https://identitytoolkit.googleapis.com/v1';
 
 const IDENTITY_TOOLKIT_ERROR_MESSAGES = {
   EMAIL_NOT_FOUND: 'No account found for this email.',
@@ -58,9 +63,10 @@ router.post('/login', async (req, res) => {
 
   try {
     const verifyResponse = await fetch(
-      `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`,
+      `${identityToolkitBase}/accounts:signInWithPassword?key=${FIREBASE_WEB_API_KEY}`,
       {
         method: 'POST',
+        signal: AbortSignal.timeout(10000),
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, returnSecureToken: true }),
       }

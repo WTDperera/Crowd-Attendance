@@ -1,3 +1,4 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,13 +23,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
-    User? user = FirebaseAuth.instance.currentUser;
+    User? user = appAuth.currentUser;
     if (user != null) {
       setState(() {
         email = user.email ?? '';
       });
 
-      var doc = await FirebaseFirestore.instance
+      var doc = await appFirestore
           .collection('lecturers')
           .doc(user.uid)
           .get();
@@ -43,7 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _logout() async {
-    await FirebaseAuth.instance.signOut();
+    await appAuth.signOut();
     if (mounted) {
       Navigator.pushReplacement(
         context,

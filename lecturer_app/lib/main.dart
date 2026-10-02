@@ -1,6 +1,7 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -20,7 +21,7 @@ import 'models/module.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await initializeAppFirebase();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -133,7 +134,7 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      stream: appAuth.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -197,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Step 1: Authenticate
-      final userCredential = await FirebaseAuth.instance
+      final userCredential = await appAuth
           .signInWithEmailAndPassword(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
@@ -207,13 +208,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final currentDeviceId = await _getDeviceId();
 
       // Step 2: Check device binding
-      final lecturerRef = FirebaseFirestore.instance
+      final lecturerRef = appFirestore
           .collection('lecturers')
           .doc(uid);
       final lecturerDoc = await lecturerRef.get();
 
       if (!lecturerDoc.exists) {
-        await FirebaseAuth.instance.signOut();
+        await appAuth.signOut();
         throw Exception('Lecturer record not found. Contact administrator.');
       }
 
@@ -238,7 +239,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else if (storedDeviceId != currentDeviceId.trim()) {
         // Device mismatch - BLOCK
-        await FirebaseAuth.instance.signOut();
+        await appAuth.signOut();
         throw Exception(
           'Unauthorized Device\n\nThis account is locked to another device.',
         );
@@ -503,7 +504,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadLecturerData() async {
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await appFirestore
           .collection('lecturers')
           .doc(widget.user.uid)
           .get();
@@ -784,7 +785,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final endStr = DateFormat('hh:mm a').format(endDateTime);
 
         // Create session in Firestore
-        final sessionRef = await FirebaseFirestore.instance
+        final sessionRef = await appFirestore
             .collection('active_sessions')
             .add({
               'lecturer_id': widget.user.uid,
@@ -845,7 +846,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             icon: const Icon(Icons.logout),
             tooltip: 'Logout',
             onPressed: () async {
-              await FirebaseAuth.instance.signOut();
+              await appAuth.signOut();
             },
           ),
         ],
@@ -1456,7 +1457,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _fetchEnrolledStudents() async {
     try {
       final moduleKey = widget.module.toUpperCase().trim();
-      final snap = await FirebaseFirestore.instance
+      final snap = await appFirestore
           .collection('students')
           .where('enrolled_module_ids', arrayContains: moduleKey)
           .get();
@@ -1482,7 +1483,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   Future<void> _hydrateState() async {
     try {
-      final sessionSnap = await FirebaseFirestore.instance.collection('active_sessions').doc(widget.sessionId).get();
+      final sessionSnap = await appFirestore.collection('active_sessions').doc(widget.sessionId).get();
       if (sessionSnap.exists) {
         final data = sessionSnap.data() as Map<String, dynamic>;
         if (mounted) {
@@ -1492,7 +1493,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         }
       }
 
-      final recordsSnap = await FirebaseFirestore.instance.collection('attendance_records')
+      final recordsSnap = await appFirestore.collection('attendance_records')
           .where('session_id', isEqualTo: widget.sessionId)
           .get();
       
@@ -1728,7 +1729,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       // Query Firestore to verify student
       print("🔍 Querying Firebase for student: $regNo");
 
-      final studentQuery = await FirebaseFirestore.instance
+      final studentQuery = await appFirestore
           .collection('students')
           .where('reg_no', isEqualTo: regNo)
           .limit(1)
@@ -1815,7 +1816,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
     
     // Update session document with scans performed
-    FirebaseFirestore.instance
+    appFirestore
         .collection('active_sessions')
         .doc(widget.sessionId)
         .update({'scans_performed': newScans});

@@ -1,3 +1,4 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -47,11 +48,11 @@ class _SessionScreenState extends State<SessionScreen> {
       return;
     }
 
-    User? user = FirebaseAuth.instance.currentUser;
+    User? user = appAuth.currentUser;
     if (user == null) return;
 
     // Create session in Firebase
-    var sessionDoc = await FirebaseFirestore.instance
+    var sessionDoc = await appFirestore
         .collection('attendance_sessions')
         .add({
       'lecturer_id': user.uid,
@@ -121,7 +122,7 @@ class _SessionScreenState extends State<SessionScreen> {
     });
 
     if (currentSessionId != null) {
-      await FirebaseFirestore.instance
+      await appFirestore
           .collection('attendance_sessions')
           .doc(currentSessionId)
           .update({
@@ -132,7 +133,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
   Future<void> _verifyAndRecordAttendance(String hashHex, int rssi) async {
     try {
-      var query = await FirebaseFirestore.instance
+      var query = await appFirestore
           .collection('students')
           .where('device_id_hash', isEqualTo: hashHex)
           .get();
@@ -143,7 +144,7 @@ class _SessionScreenState extends State<SessionScreen> {
         String studentId = studentDoc.id;
         String actualDeviceId = studentDoc.get('device_id');
 
-        var recordQuery = await FirebaseFirestore.instance
+        var recordQuery = await appFirestore
             .collection('attendance_records')
             .where('session_id', isEqualTo: currentSessionId)
             .where('student_id', isEqualTo: studentId)
@@ -151,7 +152,7 @@ class _SessionScreenState extends State<SessionScreen> {
 
         if (recordQuery.docs.isNotEmpty) {
           // Update existing record
-          await FirebaseFirestore.instance
+          await appFirestore
               .collection('attendance_records')
               .doc(recordQuery.docs.first.id)
               .update({
@@ -161,7 +162,7 @@ class _SessionScreenState extends State<SessionScreen> {
           });
         } else {
           // Create new record
-          await FirebaseFirestore.instance
+          await appFirestore
               .collection('attendance_records')
               .add({
             'session_id': currentSessionId,
@@ -176,7 +177,7 @@ class _SessionScreenState extends State<SessionScreen> {
           });
 
           // Update session count only on first detection
-          await FirebaseFirestore.instance
+          await appFirestore
               .collection('attendance_sessions')
               .doc(currentSessionId)
               .update({
@@ -229,12 +230,12 @@ class _SessionScreenState extends State<SessionScreen> {
       int requiredScans = scansPerformed > 0 ? scansPerformed : 1;
       
       // Finalize student statuses
-      var recordsQuery = await FirebaseFirestore.instance
+      var recordsQuery = await appFirestore
           .collection('attendance_records')
           .where('session_id', isEqualTo: currentSessionId)
           .get();
           
-      var batch = FirebaseFirestore.instance.batch();
+      var batch = appFirestore.batch();
       for (var doc in recordsQuery.docs) {
         int studentScanCount = doc.data().containsKey('scan_count') ? doc.get('scan_count') : 1;
         String finalStatus = studentScanCount >= requiredScans ? 'present' : 'left_early';
@@ -242,7 +243,7 @@ class _SessionScreenState extends State<SessionScreen> {
       }
       await batch.commit();
 
-      await FirebaseFirestore.instance
+      await appFirestore
           .collection('attendance_sessions')
           .doc(currentSessionId)
           .update({

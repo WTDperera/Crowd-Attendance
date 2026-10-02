@@ -1,6 +1,7 @@
+import 'package:student_app/services/firebase_environment.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
@@ -20,7 +21,7 @@ import 'screens/modules_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await initializeAppFirebase();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -132,7 +133,7 @@ class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
+      stream: appAuth.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
@@ -196,7 +197,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       // Step 1: Authenticate with Firebase Auth
-      final userCredential = await FirebaseAuth.instance
+      final userCredential = await appAuth
           .signInWithEmailAndPassword(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
@@ -207,7 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final currentDeviceId = await _getDeviceId();
 
       // Step 2: Check Firestore for device binding
-      final studentRef = FirebaseFirestore.instance
+      final studentRef = appFirestore
           .collection('students')
           .doc(uid);
         final studentDoc = await studentRef
@@ -215,7 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
           .timeout(const Duration(seconds: 20));
 
       if (!studentDoc.exists) {
-        await FirebaseAuth.instance.signOut();
+        await appAuth.signOut();
         throw Exception('Student record not found. Contact administrator.');
       }
 
@@ -240,7 +241,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else if (storedDeviceId != currentDeviceId.trim()) {
         // Device mismatch - BLOCK LOGIN
-        await FirebaseAuth.instance.signOut();
+        await appAuth.signOut();
         throw Exception(
           'Unauthorized Device\n\nThis account is locked to another device. '
           'Contact your administrator to reset device binding.',
@@ -535,7 +536,7 @@ class _BroadcastScreenState extends State<BroadcastScreen>
 
   Future<void> _loadStudentData() async {
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await appFirestore
           .collection('students')
           .doc(widget.user.uid)
           .get();
@@ -722,7 +723,7 @@ class _BroadcastScreenState extends State<BroadcastScreen>
               if (_isBroadcasting) {
                 await _blePeripheral.stop();
               }
-              await FirebaseAuth.instance.signOut();
+              await appAuth.signOut();
             },
           ),
         ],

@@ -1,3 +1,4 @@
+import 'package:student_app/services/firebase_environment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/module.dart';
@@ -12,7 +13,7 @@ class WrongEnrollmentPasswordException implements Exception {
 
 class ModuleService {
   ModuleService({FirebaseFirestore? firestore})
-    : _firestore = firestore ?? FirebaseFirestore.instance;
+    : _firestore = firestore ?? appFirestore;
 
   final FirebaseFirestore _firestore;
 

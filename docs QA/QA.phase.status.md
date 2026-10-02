@@ -1,16 +1,18 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P01 only — documentation prepared for review  
-**Last approved phase:** None  
-**Implementation status:** P01 documentation READY_FOR_REVIEW; application implementation and functional testing not started.
+**Current authorized phase:** P02 only — blocked pending SDK restoration
+
+**Last approved phase:** P01
+
+**Implementation status:** P01 approved; P02 BLOCKED (mobile verification). No later phase authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
 | Phase | Status | Start authorization | Review evidence | User approval |
 |---|---|---|---|---|
-| P01 — Scope, policy and expected results | READY_FOR_REVIEW | 2026-10-02: user explicitly started P01; exact wording below | [P01 report](../qa/reports/P01.md), [decisions](../qa/docs/decisions.md), [matrix](../qa/docs/test-matrix.md) | None |
-| P02 — Isolated environment and minimum harness | NOT_STARTED | None | None | None |
+| P01 — Scope, policy and expected results | APPROVED | 2026-10-02: user explicitly started P01; exact wording below | [P01 report](../qa/reports/P01.md), [decisions](../qa/docs/decisions.md), [matrix](../qa/docs/test-matrix.md) | 2026-10-02: “ok I aprove the phase 1 go to the next” |
+| P02 — Isolated environment and minimum harness | BLOCKED | 2026-10-02: “ok I aprove the phase 1 go to the next” (next sequential phase is P02) | [P02 report](../qa/reports/P02.md): 5/5 harness checks pass; both mobile SDK/build/connection checks unrun | None |
 | P03 — Role and profile protection | NOT_STARTED | None | None | None |
 | P04 — Enrollment and API ownership | NOT_STARTED | None | None | None |
 | P05 — Durable multiple scan rounds | NOT_STARTED | None | None | None |
@@ -39,7 +41,7 @@ Do not treat the table itself as a substitute for missing user authorization.
 > If you need  help by me ask (such like physical/UI User exppieriance tests you cannot do)
 > and start First Phase(P01   )
 
-This authorizes P01 only. No phase approval or P02 start has been given.
+At that time this authorized P01 only. Subsequent approval/start is recorded below.
 
 2026-10-02 — P01 policy responses (not phase approval):
 
@@ -50,7 +52,11 @@ This authorizes P01 only. No phase approval or P02 start has been given.
 
 ## Current blockers and decisions
 
-P01's documentation gate is ready for review: E01–E23 have expected results, mapped verification and explicit policy dependencies. Core policies are confirmed as recorded above. Details marked proposed in D03/D05–D07/D09–D11 remain for review (round completion semantics, legacy Late, session lifecycle, rounding, registration/device reset, module retention and platform details). Conditional expectations must not become accepted business rules by default.
+2026-10-02 — “ok I aprove the phase 1 go to the next” approves P01 and explicitly advances to its immediate successor P02 only. P01 proposals are accepted as the reviewed baseline where a candidate was specified; details left unspecified (e.g. registration byte budget and exact hardware) still require resolution before dependent work. The user then confirmed “I deleted the SDK,” explaining unavailable Flutter/Android baseline tools. Mobile execution is blocked until SDK restoration; independent P02 work continues.
+
+P01 is approved: E01–E23 mappings and specified candidate policies form the reviewed baseline. Explicitly unspecified details (registration format/byte budget, reset workflow, actual device/capacity selection) still need resolution before dependent work; approval does not invent missing values.
+
+P02 independent work is complete: local demo-only guards, repeated seed/reset, API/web bootstrap and 5/5 harness checks; normal/QA frontend builds pass. Existing lint baseline has 16 errors/2 warnings. Mobile bootstrap and diagnostic probes exist but cannot be compiled/run without restored SDKs. P02 remains BLOCKED until both apps' analysis/build/test and actual emulator connection results are recorded. No P03 work started.
 
 Real-user testing remains deferred. Physical hardware availability is unconfirmed; user offered assistance. Devices are not a P01 prerequisite. Before accepting later dependent tests, resolve their policy decisions and environment needs.
 
@@ -62,7 +68,16 @@ Real-user testing remains deferred. Physical hardware availability is unconfirme
 - Technical gate: READY_FOR_REVIEW, not APPROVED. No application defects fixed or functionally reproduced.
 - Existing .gitignore edit and other untracked handoff documents preserved.
 - Manual verification and Git commands: see P01 report. No staging/commit/push/deployment executed.
-- User approval: none. Next phase start: none.
+- Subsequent user approval and P02 start: “ok I aprove the phase 1 go to the next”, 2026-10-02.
+
+## P02 handoff — 2026-10-02
+
+- Authorized wording: “ok I aprove the phase 1 go to the next”; P02 only.
+- Current HEAD: a5ea075192f88924fe7703f3373316ff6a2dd375, MAIN; origin unchanged. User's P01 commit appeared during work; agent performed no Git mutations.
+- Evidence/files/commands/manual Git instructions: [P02 report](../qa/reports/P02.md), [setup guide](../qa/README.md).
+- Technical gate: BLOCKED — user confirmed deleted SDK; mobile checks unrun. Web/API/emulator 5/5 checks and two frontend builds pass; baseline lint fails.
+- Resume: restore Flutter/Android tools and request “Resume P02 only”; verify both mobile targets before approval.
+- P02 approval: none. P03 start: none. Emulators stopped after successful final smoke run.
 
 ## Handoff record template
 

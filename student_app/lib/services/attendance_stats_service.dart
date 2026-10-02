@@ -1,3 +1,4 @@
+import 'package:student_app/services/firebase_environment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -6,8 +7,8 @@ import '../models/module_stats.dart';
 
 class AttendanceStatsService {
   AttendanceStatsService({FirebaseFirestore? firestore, FirebaseAuth? auth})
-    : _firestore = firestore ?? FirebaseFirestore.instance,
-      _auth = auth ?? FirebaseAuth.instance;
+    : _firestore = firestore ?? appFirestore,
+      _auth = auth ?? appAuth;
 
   final FirebaseFirestore _firestore;
   final FirebaseAuth _auth;

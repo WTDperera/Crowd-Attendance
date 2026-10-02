@@ -1,0 +1,21 @@
+{
+  "name": "crowd-attendance-qa",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test tests/config.test.cjs",
+    "emulators": "node scripts/run.cjs emulators",
+    "smoke": "node scripts/run.cjs smoke",
+    "seed": "node scripts/run.cjs seed",
+    "reset": "node scripts/run.cjs reset",
+    "api": "node scripts/run.cjs api",
+    "web": "node scripts/run.cjs web",
+    "build:web": "node scripts/run.cjs build-web"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.0",
+    "firebase": "12.9.0",
+    "firebase-tools": "15.32.1"
+  }
+}

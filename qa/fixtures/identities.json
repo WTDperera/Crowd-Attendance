@@ -1,0 +1,13 @@
+{
+  "password": "QA-only-Password-123!",
+  "enrollmentPassword": "QA-module-only-123!",
+  "lecturers": [
+    { "uid": "qa-lecturer-a", "email": "lecturer.a@example.test", "name": "QA Lecturer A" },
+    { "uid": "qa-lecturer-b", "email": "lecturer.b@example.test", "name": "QA Lecturer B" }
+  ],
+  "students": [
+    { "uid": "qa-student-a", "email": "student.a@example.test", "name": "QA Student A", "reg_no": "QA001" },
+    { "uid": "qa-student-b", "email": "student.b@example.test", "name": "QA Student B", "reg_no": "QA002" },
+    { "uid": "qa-student-c", "email": "student.c@example.test", "name": "QA Student C", "reg_no": "QA003" }
+  ]
+}

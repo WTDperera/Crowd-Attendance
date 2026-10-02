@@ -60,3 +60,6 @@ secrets/
 # APK files
 *.apk
 *.aab
+#QA Tharindu
+QA.university.essential.plan.md
+docs QA

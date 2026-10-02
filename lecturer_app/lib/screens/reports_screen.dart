@@ -1,3 +1,4 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -41,7 +42,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildSessionsList() {
-    User? user = FirebaseAuth.instance.currentUser;
+    User? user = appAuth.currentUser;
     if (user == null) return const Center(child: Text('Not logged in'));
 
     return SingleChildScrollView(
@@ -59,7 +60,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           const SizedBox(height: 20),
           
           StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
+            stream: appFirestore
                 .collection('attendance_sessions')
                 .where('lecturer_id', isEqualTo: user.uid)
                 .orderBy('created_at', descending: true)
@@ -229,7 +230,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildSessionDetail() {
     return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
+      stream: appFirestore
           .collection('attendance_sessions')
           .doc(selectedSessionId)
           .snapshots(),
@@ -319,7 +320,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     
                     // Stats
                     StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
+                      stream: appFirestore
                           .collection('attendance_records')
                           .where('session_id', isEqualTo: selectedSessionId)
                           .snapshots(),
@@ -486,7 +487,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         // Students List
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
+            stream: appFirestore
                 .collection('attendance_records')
                 .where('session_id', isEqualTo: selectedSessionId)
                 .orderBy('marked_at', descending: false)

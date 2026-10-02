@@ -1,3 +1,4 @@
+import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
@@ -7,8 +8,8 @@ class SessionService {
   factory SessionService() => _instance;
   SessionService._internal();
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = appFirestore;
+  final FirebaseAuth _auth = appAuth;
 
   String? _activeSessionId;
   String? get activeSessionId => _activeSessionId;
