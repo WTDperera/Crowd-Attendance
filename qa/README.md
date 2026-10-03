@@ -43,23 +43,36 @@ Fixture v1 has two lecturers, three students, QA101/QA202, one completed and one
 
 Build QA frontend: `npm.cmd run build:web`. The normal frontend `npm.cmd run build` is the existing non-QA baseline; neither command publishes anything. QA API doesn't load `.env`; web QA launch overrides all target selectors and ignores live Firebase settings for client initialization.
 
-## Mobile: pending restored SDK
+## Mobile: Android QA setup
 
-The user confirmed Flutter/Android SDK deletion during P02. The following commands and connection probes have **not run**. Restore Flutter/Dart compatible with the locked pubspecs (Dart >=3.10.1) and Android tooling first. P02 stays blocked until both apps' checks and actual emulator connections are verified.
+Flutter is restored at `C:/sdk/flutter` (3.47.6, Dart 3.13.5), with Android SDK at `C:/Users/Tharindu/AppData/Local/Android/Sdk`. Flutter is not on PATH; use its full path below. Both apps include the SDK `integration_test` dependency and shared guard assertions. See [P02 report](reports/P02.md) for actual build/probe results and baseline analysis findings.
+
+Android Studio bundles Java 25, which is incompatible with the existing Gradle 8.14. Set the process-local Java 21 Gradle setting below; `org.gradle.daemon=false` avoids reusing a daemon with stale DNS failures after network restoration. Android Command-line Tools 22.0 and the verified Android 36 AOSP x86_64 image are installed. Some unrelated SDK licenses were unaccepted in the last doctor result; review any needed licenses personally with `& 'C:/sdk/flutter/bin/flutter.bat' doctor --android-licenses`.
+
+On 2026-10-03 the user explicitly deferred student Windows desktop/host tests. The Android probe runs the same retained target-guard assertions plus a real Auth/Firestore server connection; Windows C++ tools are not an Android QA prerequisite. Do not run the student's default host `flutter test` command for this scope or claim it passed.
+
+The dedicated AVD is `crowd_attendance_qa_p02_api36` (Pixel 6 profile, Android 36, x86_64), with data under ignored `qa/.cache/avd/p02-api36.avd`. Boot it before testing:
+
+```powershell
+& 'C:/Users/Tharindu/AppData/Local/Android/Sdk/emulator/emulator.exe' -avd crowd_attendance_qa_p02_api36 -port 5580 -no-snapshot
+```
+
+Confirm `adb.exe -s emulator-5580 shell getprop sys.boot_completed` returns `1`. The test command explicitly selects `emulator-5580` and asserts Android; it cannot silently run on Windows. If the AVD or SDK image has been removed, recreate it with Android Studio's Device Manager before relying on these instructions.
 
 Both apps use `firebase_environment.dart`; QA creates a separate named Firebase app and routes every Auth/Firestore access through it. Non-QA uses the existing default Firebase app. QA requires three explicit Dart defines, accepts only the fixed demo project and `10.0.2.2` or `127.0.0.1`, and disables Firestore persistence. Invalid QA flags fail before initialization. Debug Android manifests permit emulator HTTP; release manifests are unchanged.
 
-With local Firebase emulators already running/seeded, execute inside **each** `student_app` and `lecturer_app`:
+With the Android device booted and local Firebase emulators running/seeded, execute inside **each** `student_app` and `lecturer_app`:
 
 ```powershell
-flutter pub get --enforce-lockfile
-flutter analyze
-flutter test test/qa_config_test.dart
-flutter build apk --debug --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
-flutter run -t lib/qa_smoke.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' pub get --enforce-lockfile
+& 'C:/sdk/flutter/bin/flutter.bat' analyze --no-pub
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+& 'C:/sdk/flutter/bin/flutter.bat' build apk --debug --no-pub --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/qa_bootstrap_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' run --no-pub -t lib/qa_smoke.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
 ```
 
-The Android emulator reaches the desktop loopback through `10.0.2.2`. The diagnostic entry point logs into the seeded role, reads its own profile from the **server** with a timeout, signs out, and displays `P02 QA connection PASS`. It bypasses BLE and does not claim the normal app journey passed. Record each app/device result separately; exceptions are failures, not passes. Run `flutter run` with the same defines and the default `lib/main.dart` entry for normal QA app use.
+The Android emulator reaches the desktop loopback through `10.0.2.2`. The automated probe checks four target guard assertions, then authenticates the expected synthetic UID, verifies the named QA app/demo project, reads its own profile from the **server**, checks the synthetic email and signs out. It has a timeout and fails on errors. The optional `lib/qa_smoke.dart` diagnostic displays `P02 QA connection PASS`. Both bypass BLE and do not establish the normal app journey or physical-device behavior. Record each app/device result separately. Run `flutter run` with the same defines and the default `lib/main.dart` entry for normal QA app use.
 
 For a physical USB Android phone, forward the local ports and use `QA_EMULATOR_HOST=127.0.0.1` instead:
 
