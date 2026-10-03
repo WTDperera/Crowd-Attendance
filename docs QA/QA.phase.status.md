@@ -1,19 +1,19 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P02 only — ready for user review
+**Current authorized phase:** P03 only — ready for user review
 
-**Last approved phase:** P01
+**Last approved phase:** P02
 
-**Implementation status:** P01 approved; P02 READY_FOR_REVIEW (Android verification complete). No later phase authorized.
+**Implementation status:** P01/P02 approved; P03 READY_FOR_REVIEW. P04–P13 are not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
 | Phase | Status | Start authorization | Review evidence | User approval |
 |---|---|---|---|---|
 | P01 — Scope, policy and expected results | APPROVED | 2026-10-02: user explicitly started P01; exact wording below | [P01 report](../qa/reports/P01.md), [decisions](../qa/docs/decisions.md), [matrix](../qa/docs/test-matrix.md) | 2026-10-02: “ok I aprove the phase 1 go to the next” |
-| P02 — Isolated environment and minimum harness | READY_FOR_REVIEW | 2026-10-02: “ok I aprove the phase 1 go to the next”; resumed 2026-10-03 for Android only | [P02 report](../qa/reports/P02.md): harness 5/5; student Android 2/2; lecturer Android 2/2; both final QA APKs build; baseline analysis nonzero; student Windows host test deferred by user | None |
-| P03 — Role and profile protection | NOT_STARTED | None | None | None |
+| P02 — Isolated environment and minimum harness | APPROVED | 2026-10-02: “ok I aprove the phase 1 go to the next”; resumed 2026-10-03 for Android only | [P02 report](../qa/reports/P02.md): harness 5/5; student Android 2/2; lecturer Android 2/2; both final QA APKs build; baseline analysis nonzero; student Windows host test deferred by user | 2026-10-04: “I approve P02. Please start P03” |
+| P03 — Role and profile protection | READY_FOR_REVIEW | 2026-10-04: “I approve P02. Please start P03” | [P03 report](../qa/reports/P03.md): escalation reproduced before repair; final local suite 15/15; Android profile probe 1/1 per app; normal QA APKs and QA web build pass | None |
 | P04 — Enrollment and API ownership | NOT_STARTED | None | None | None |
 | P05 — Durable multiple scan rounds | NOT_STARTED | None | None | None |
 | P06 — Finalization, recovery and corrections | NOT_STARTED | None | None | None |
@@ -34,6 +34,8 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-04 — “I approve P02. Please start P03” approves P02 and explicitly starts P03 only. P02's Android-only verification and Windows deferral remain the reviewed scope. P04 requires a separate approval/start instruction.
 
 2026-10-02 — user authorized P01 with:
 
@@ -56,7 +58,7 @@ At that time this authorized P01 only. Subsequent approval/start is recorded bel
 
 P01 is approved: E01–E23 mappings and specified candidate policies form the reviewed baseline. Explicitly unspecified details (registration format/byte budget, reset workflow, actual device/capacity selection) still need resolution before dependent work; approval does not invent missing values.
 
-P02 now meets its Android-scoped harness gate: 5/5 local harness checks, 2/2 Android bootstrap checks in each mobile app, and both final normal-entry QA APK builds pass. Auth/Firestore connections were verified on the dedicated Android 36 emulator. Student Windows host testing is explicitly deferred by the user; existing assertions remain and passed on Android. Frontend lint baseline remains 16 errors/2 warnings; mobile analysis remains nonzero with no errors (student 1 warning/27 info; lecturer 1 warning/157 info). These are recorded baseline findings, not green lint/analysis claims. P02 is READY_FOR_REVIEW, not approved. No P03 work started.
+P02 was approved on 2026-10-04 with its Android-scoped verification and explicit student Windows deferral. P03 now meets its role/profile gate: Admin-only lecturer provisioning, narrow profile permissions, first-binding and denied-tampering tests. Final combined emulator suite passes 15/15; both Android profile scenarios pass. Baseline frontend lint and full-app mobile analysis findings from P02 remain historical/nonzero; targeted analysis of both new probes has no findings. Enrollment, counter ownership/integrity and broader resource access remain later gates; no complete U2/security closure is claimed.
 
 Real-user testing remains deferred. Physical hardware availability is unconfirmed; user offered assistance. Devices are not a P01 prerequisite. Before accepting later dependent tests, resolve their policy decisions and environment needs.
 
@@ -118,6 +120,16 @@ Real-user testing remains deferred. Physical hardware availability is unconfirme
 - Device: `crowd_attendance_qa_p02_api36`, Pixel 6 profile, Android 36 AOSP revision 2/x86_64, `emulator-5580`, WHPX acceleration. AOSP Play Services/provider warnings did not prevent the server-backed assertions passing; no physical BLE or normal UI journey claim.
 - All QA emulator sessions stopped; final device list empty and ports 8080/9099/4400/5580 had no listeners. No Git mutation or production operation. Index empty; branch/HEAD remain MAIN/a1e8a926094392a2b38f02a0a9205ddb04f77099.
 - Final files, commands, limits and manual Git commands: latest Android-only handoff in [P02 report](../qa/reports/P02.md). Technical gate READY_FOR_REVIEW; user approval and P03 start remain absent.
+
+## P03 handoff — 2026-10-04
+
+- Authorization: “I approve P02. Please start P03”; P02 approved, P03 only started.
+- Baseline: clean worktree/index, MAIN, HEAD `37b823c40a4e11dc66dff3b0612805d4a16cc2e3` (`test(qa): complete P02 mobile tests and APK builds`), origin `https://github.com/WTDperera/Crowd-Attendance.git`.
+- Before repair: student created its own lecturer profile and obtained a portal custom token (HTTP 200). Isolated baseline suite: 6 pass/8 fail. Initial test isolation defects were corrected before relying on that baseline.
+- After repair: final combined suite 15/15, zero skipped (P02 5 + P03 10). Android student/lecturer each 1/1 substantive profile scenario; lecturer uses the actual AuthService for first/subsequent login. Targeted probe analysis clean. Normal QA APK rebuilds and QA web build pass.
+- Admin provisioning is the only profile-creation path; students cannot promote themselves. Protected identity/role/binding/enrollment fields cannot be edited by ordinary clients; valid first binding and server login timestamps pass. Lecturer presentation edits and existing mobile attendance-count field updates remain allowed.
+- Limits: role registry origin must be audited before any future live deployment; current live profiles were not inspected/migrated. Direct enrollment and broad counter ownership/integrity remain P04–P06 work. Device build ID is not proof of unique hardware; reset workflow/physical BLE/UI journeys remain deferred. No new production operations, dependencies or global toolchain configuration.
+- Evidence and exact manual verification/Git commands: [P03 report](../qa/reports/P03.md). No staging/commit/push. P03 is READY_FOR_REVIEW, not approved; P04 has not started.
 
 ## Handoff record template
 

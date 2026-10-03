@@ -14,8 +14,9 @@
  * .env), since this uses the Admin SDK, not the public client SDK.
  */
 
-require('dotenv').config();
+if (process.env.QA_MODE !== 'true') require('dotenv').config();
 const { auth, db, admin } = require('../firebaseAdmin');
+const { provisionLecturerProfile } = require('../services/lecturerProvisioning');
 
 async function createLecturer(email, password, fullName) {
   if (!email || !password || !fullName) {
@@ -50,13 +51,13 @@ async function createLecturer(email, password, fullName) {
       displayName: fullName,
     });
 
-    await db.collection('lecturers').doc(userRecord.uid).set({
-      fullName,
-      email,
-      department: '',
-      role: 'lecturer',
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    try {
+      await provisionLecturerProfile({ auth, db, admin }, userRecord.uid, { fullName });
+    } catch (error) {
+      // Only this invocation's newly created Auth account is rolled back.
+      await auth.deleteUser(userRecord.uid);
+      throw error;
+    }
 
     console.log('Lecturer account created successfully.');
     console.log(`  uid:   ${userRecord.uid}`);

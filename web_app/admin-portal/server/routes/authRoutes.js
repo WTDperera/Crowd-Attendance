@@ -103,8 +103,8 @@ router.post('/login', async (req, res) => {
     return res.json({
       token: customToken,
       lecturer: {
-        uid,
         ...lecturerDoc.data(),
+        uid,
       },
     });
   } catch (error) {

@@ -23,10 +23,13 @@ async function seed() {
     await auth.createUser({ uid: person.uid, email: person.email, password: identities.password, displayName: person.name });
   }
   const start = admin.firestore.Timestamp.fromDate(new Date('2026-10-02T03:30:00Z'));
+  const { provisionLecturerProfile } = require('../../web_app/admin-portal/server/services/lecturerProvisioning');
+  for (const lecturer of identities.lecturers) {
+    await provisionLecturerProfile({ auth, db, admin }, lecturer.uid, { fullName: lecturer.name });
+  }
   const end = admin.firestore.Timestamp.fromDate(new Date('2026-10-02T04:30:00Z'));
   const hash = createHash('sha256').update(identities.enrollmentPassword).digest('hex');
   const batch = db.batch();
-  for (const lecturer of identities.lecturers) batch.set(db.doc(`lecturers/${lecturer.uid}`), lecturer);
   for (const [i, code] of ['QA101', 'QA202'].entries()) {
     batch.set(db.doc(`modules/${code}`), { code, module_id: code, name: `QA Module ${code}`,
       lecturer_id: identities.lecturers[i].uid, enrollment_enabled: true, enrollment_password_hash: hash,

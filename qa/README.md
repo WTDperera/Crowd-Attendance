@@ -83,8 +83,26 @@ adb reverse tcp:8080 tcp:8080
 
 No LAN-exposed emulator listener is required. Multiple attached devices need an explicit device serial for adb/Flutter. Physical BLE and human UX observations remain for P12; these connection probes alone are not those tests.
 
-## References and scope
+## P03: role and profile regressions
+
+Run `npm.cmd run test:p03` inside `qa`. The guarded launcher starts only local Auth/Firestore emulators, resets synthetic data between P03 cases, runs the P02 smoke checks plus focused P03 rules/API/provisioning cases, and stops the emulators. Expected permission-denied messages are assertions, not test failures; rely on the final test summary/exit code. Do not launch this while a separate Firebase emulator session owns the same ports.
+
+Lecturer profiles now form a trusted registry: client creation/deletion is denied. The existing server `scripts/createLecturer.js` uses the Admin-only provisioning service, which checks the Auth account, refuses student identities/duplicate profiles, and fixes UID/email/role from trusted input. The QA seed uses that same service. No provisioning route is exposed. Existing lecturer credentials still work in mobile and the portal; a separate administrator role is not introduced. Existing live profiles would require an origin/identity audit before any future deployment; no live registry was inspected or migrated in P03.
+
+Student direct writes are limited to first binding and server login timestamps. Provisioned lecturers may update their own name/fullName/department and first binding/login fields; identity/role/creation fields remain protected. Lecturer mobile writes to student attendance_counts remain supported, while identity/registration/enrollment/binding changes use trusted API paths where authorized. Full enrollment, counter ownership and attendance integrity are later phase gates.
+
+For Android P03 checks, boot the existing QA AVD and start Firebase using the instructions above. Run `npm.cmd run seed` before **each** app probe so its first-binding assertions begin unbound. In each app directory:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/profile_security_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' build apk --debug --no-pub -t lib/main.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+```
+
+The student probe checks actual Dart SDK writes with the student login's field shape; it does not operate the login UI. The lecturer probe calls the actual AuthService for first and subsequent login. Each defines one substantive scenario; framework teardown is not another acceptance case. Rebuilding main.dart restores the normal app APK overwritten by drive. See [P03 report](reports/P03.md) for results and limits. Windows desktop and physical BLE remain deferred.
+
+## Firebase references
 
 Firebase documents [demo projects and Auth emulator/custom-token connections](https://firebase.google.com/docs/emulator-suite/connect_auth), [Firestore emulator configuration](https://firebase.google.com/docs/emulator-suite/connect_firestore), and [client rules testing](https://firebase.google.com/docs/rules/unit-tests). The implementation follows those mechanisms with stricter local target guards.
 
-The npm server `test` command now invokes this real P02 smoke runner instead of the failing placeholder. P03–P13 feature fixes, their suites, CI workflows and production deployment are not part of this setup.
+The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions. P04–P13, CI workflows and production deployment require their own authorized phases.

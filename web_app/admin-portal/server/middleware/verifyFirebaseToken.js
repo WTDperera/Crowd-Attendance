@@ -22,7 +22,8 @@ const verifyFirebaseToken = async (req, res, next) => {
 // only proves *someone* is signed in — it could just as easily be a
 // student's account. Every admin-portal route that reads or writes
 // lecturer-only data must also run this, which additionally checks that
-// the caller has a lecturers/{uid} profile document.
+// the caller has a trusted, Admin-provisioned lecturers/{uid} document.
+// Client rules forbid its creation/deletion and protected-field updates.
 const requireLecturer = async (req, res, next) => {
   if (!req.user?.uid) {
     return res.status(401).json({ message: 'Unauthorized.' });
@@ -33,7 +34,7 @@ const requireLecturer = async (req, res, next) => {
     if (!lecturerDoc.exists) {
       return res.status(403).json({ message: 'Lecturer access required.' });
     }
-    req.lecturer = { uid: req.user.uid, ...lecturerDoc.data() };
+    req.lecturer = { ...lecturerDoc.data(), uid: req.user.uid };
     return next();
   } catch (error) {
     return res.status(500).json({ message: 'Unable to verify lecturer access.' });
