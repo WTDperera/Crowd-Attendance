@@ -1,27 +1,26 @@
 const express = require('express');
 const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
-const { requireLecturer } = verifyFirebaseToken;
-const { db } = require('../firebaseAdmin');
-const { requireModuleOwner } = require('../services/moduleAccess');
-
+const {
+  requireLecturer
+} = verifyFirebaseToken;
+const {
+  db
+} = require('../firebaseAdmin');
+const {
+  requireModuleOwner
+} = require('../services/moduleAccess');
 const router = express.Router();
-const ENROLL_FIELD = 'enrolled_module_ids';
-
-const mapSessionDate = (value) => {
+const mapSessionDate = value => {
   if (!value) {
     return null;
   }
-
   if (typeof value.toDate === 'function') {
     return value.toDate().toISOString();
   }
-
   return value;
 };
-
-const normalizeModule = (doc) => {
+const normalizeModule = doc => {
   const data = doc.data();
-
   return {
     id: doc.id,
     module_id: data.module_id || doc.id,
@@ -32,196 +31,80 @@ const normalizeModule = (doc) => {
     semester: data.semester || '',
     lecturer_id: data.lecturer_id || '',
     total_sessions: data.total_sessions || 0,
-    session_dates: Array.isArray(data.session_dates)
-      ? data.session_dates.map(mapSessionDate).filter(Boolean)
-      : [],
+    session_dates: Array.isArray(data.session_dates) ? data.session_dates.map(mapSessionDate).filter(Boolean) : []
   };
 };
-
-const mapTimestamp = (value) => {
+const mapTimestamp = value => {
   if (!value || typeof value.toDate !== 'function') {
     return null;
   }
-
   return value.toDate().toISOString();
 };
-
-const normalizeRecord = (doc, fallbackStatus) => {
-  const data = doc.data();
-  return {
-    id: doc.id,
-    date: data.date || null,
-    session_id: data.session_id || null,
-    status: data.status || fallbackStatus,
-    timestamp: mapTimestamp(data.timestamp) || mapTimestamp(data.marked_at),
-  };
-};
-
-const buildRecordKey = (record) => {
-  return record.session_id || record.date || record.id;
-};
-
-const sortByTimestampDesc = (records) => {
-  return records.sort((a, b) => {
-    const aValue = a.timestamp ? Date.parse(a.timestamp) : Date.parse(a.date || '') || 0;
-    const bValue = b.timestamp ? Date.parse(b.timestamp) : Date.parse(b.date || '') || 0;
-    return bValue - aValue;
-  });
-};
-
-const fetchStudentRecords = async (collectionName, moduleId, uid, studentFields, fallbackStatus) => {
-  const records = [];
-
-  for (const field of studentFields) {
-    const snapshot = await db
-      .collection(collectionName)
-      .where('module_id', '==', moduleId)
-      .where(field, '==', uid)
-      .get();
-
-    snapshot.docs.forEach((doc) => {
-      records.push(normalizeRecord(doc, fallbackStatus));
-    });
-  }
-
-  return records;
-};
-
-router.get('/modules', verifyFirebaseToken,
-  requireLecturer, async (req, res) => {
+router.get('/modules', verifyFirebaseToken, requireLecturer, async (req, res) => {
   try {
     const snapshot = await db.collection('modules').where('lecturer_id', '==', req.user.uid).get();
-    const modules = snapshot.docs.map((doc) => normalizeModule(doc));
-
-    return res.json({ modules });
+    const modules = snapshot.docs.map(doc => normalizeModule(doc));
+    return res.json({
+      modules
+    });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: 'Unable to fetch modules right now.' });
+    return res.status(500).json({
+      message: 'Unable to fetch modules right now.'
+    });
   }
 });
-
-router.get(
-  '/modules/:moduleId/attendance-summary',
-  verifyFirebaseToken,
-  requireLecturer,
-  requireModuleOwner(req => req.params.moduleId),
-  async (req, res) => {
-    const { moduleId } = req.params;
-
-    try {
-      let moduleDoc = await db.collection('modules').doc(moduleId).get();
-      if (!moduleDoc.exists) {
-        const moduleQuery = await db
-          .collection('modules')
-          .where('module_id', '==', moduleId)
-          .limit(1)
-          .get();
-        moduleDoc = moduleQuery.docs[0];
-      }
-
-      if (!moduleDoc || !moduleDoc.exists) {
-        return res.status(404).json({ message: 'Module not found.' });
-      }
-
-      const moduleData = normalizeModule(moduleDoc);
-      const studentSnapshot = await db
-        .collection('students')
-        .where(ENROLL_FIELD, 'array-contains', moduleId)
-        .get();
-
-      const students = studentSnapshot.docs.map((doc) => {
-        const data = doc.data();
-        const attendanceCounts = data.attendance_counts || {};
-        const presentCount = Number(attendanceCounts[moduleId] || 0);
-
-        return {
-          uid: doc.id,
-          reg_no: data.reg_no || '',
-          email: data.email || '',
-          present_count: presentCount,
-        };
-      });
-
-      const activeSessionSnapshot = await db
-        .collection('active_sessions')
-        .where('module_id', '==', moduleId)
-        .where('status', '==', 'active')
-        .limit(1)
-        .get();
-
-      const activeSessionDoc = activeSessionSnapshot.docs[0];
-      const activeSession = activeSessionDoc
-        ? {
-            id: activeSessionDoc.id,
-            topic:
-              activeSessionDoc.data().topic ||
-              activeSessionDoc.data().session_topic ||
-              '',
-            started_at: mapTimestamp(activeSessionDoc.data().started_at),
-            student_count: activeSessionDoc.data().student_count || 0,
-            students_present: activeSessionDoc.data().students_present || [],
-          }
-        : null;
-
-      return res.json({
-        module: moduleData,
-        activeSession,
-        students,
-      });
-    } catch (error) {
-      return res
-        .status(500)
-        .json({ message: 'Unable to fetch attendance summary right now.' });
-    }
+const {
+  loadReport
+} = require('../services/attendanceReports');
+const {
+  respondError
+} = require('../services/moduleAccess');
+router.get('/modules/:moduleId/attendance-summary', verifyFirebaseToken, requireLecturer, requireModuleOwner(req => req.params.moduleId), async (req, res) => {
+  try {
+    const report = await loadReport(req.moduleDoc);
+    const active = await db.collection('active_sessions').where('module_id', '==', req.moduleDoc.id).where('status', '==', 'active').limit(1).get();
+    const doc = active.docs[0],
+      d = doc?.data();
+    res.json({
+      module: report.module,
+      activeSession: doc ? {
+        id: doc.id,
+        topic: d.topic || d.session_topic || '',
+        started_at: mapTimestamp(d.started_at),
+        student_count: d.student_count || 0,
+        students_present: d.students_present || []
+      } : null,
+      students: report.matrix.map(r => ({
+        uid: r.student_uid,
+        reg_no: r.reg_no,
+        email: r.email,
+        present_count: r.present,
+        total: r.total,
+        percentage: r.percentage,
+        eligible: r.eligible,
+        conflicts: r.conflicts
+      }))
+    });
+  } catch (e) {
+    respondError(res, e);
   }
-);
-
-router.get(
-  '/modules/:moduleId/students/:uid/attendance-details',
-  verifyFirebaseToken,
-  requireLecturer,
-  requireModuleOwner(req => req.params.moduleId),
-  async (req, res) => {
-    const { moduleId, uid } = req.params;
-
-    try {
-      const studentFields = ['student_uid', 'student_id'];
-
-      const presentRecords = [
-        ...(await fetchStudentRecords('attendance_records', moduleId, uid, studentFields, 'present')),
-        ...(await fetchStudentRecords('attendance_record', moduleId, uid, studentFields, 'present')),
-      ];
-
-      const absentRecords = [
-        ...(await fetchStudentRecords('absence_records', moduleId, uid, studentFields, 'Absent')),
-        ...(await fetchStudentRecords('absence_record', moduleId, uid, studentFields, 'Absent')),
-      ];
-
-      const merged = new Map();
-
-      presentRecords.forEach((record) => {
-        merged.set(buildRecordKey(record), record);
-      });
-
-      absentRecords.forEach((record) => {
-        const key = buildRecordKey(record);
-        if (!merged.has(key)) {
-          merged.set(key, record);
-        }
-      });
-
-      const records = sortByTimestampDesc(Array.from(merged.values()));
-
-      return res.json({ records });
-    } catch (error) {
-      return res
-        .status(500)
-        .json({ message: 'Unable to fetch attendance details right now.' });
-    }
+});
+router.get('/modules/:moduleId/students/:uid/attendance-details', verifyFirebaseToken, requireLecturer, requireModuleOwner(req => req.params.moduleId), async (req, res) => {
+  try {
+    const report = await loadReport(req.moduleDoc),
+      row = report.matrix.find(r => r.student_uid === req.params.uid);
+    res.json({
+      records: row ? row.outcomes.flatMap((o, i) => o.value === null ? [] : [{
+        id: report.sessions[i].id + '_' + row.student_uid,
+        session_id: report.sessions[i].id,
+        date: report.sessions[i].baseDate,
+        status: o.status,
+        timestamp: report.sessions[i].start_time,
+        conflict: o.conflict
+      }]).reverse() : []
+    });
+  } catch (e) {
+    respondError(res, e);
   }
-);
-
-// Note: attendance export moved to routes/attendanceRoutes.js
-
+});
 module.exports = router;

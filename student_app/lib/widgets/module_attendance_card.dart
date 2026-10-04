@@ -36,7 +36,7 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
     final progress = (percentage / 100.0).clamp(0.0, 1.0);
 
     final Color color;
-    if (percentage > 80.0) {
+    if (widget.stats.eligible) {
       color = Colors.green;
     } else if (percentage >= 60.0) {
       color = Colors.orange;
@@ -74,7 +74,7 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
                         backgroundColor: Colors.white12,
                       ),
                       Text(
-                        '${percentage.toStringAsFixed(1)}%',
+                        '${percentage.toStringAsFixed(2)}%',
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 14,
@@ -99,6 +99,8 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
                         attendedText,
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
+                      if (widget.stats.conflicts.isNotEmpty)
+                        const Text('Conflicting records require lecturer review.'),
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 8,
@@ -192,7 +194,7 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
           Text(emptyText, style: Theme.of(context).textTheme.bodyMedium)
         else
           ...dates.map((d) {
-            final local = d.toLocal();
+            final local = d.toUtc().add(const Duration(hours: 5, minutes: 30));
             final dateText = localizations.formatFullDate(local);
             String? dur = widget.stats.recordDurations[d];
             if (dur == null) {
@@ -204,16 +206,11 @@ class _ModuleAttendanceCardState extends State<ModuleAttendanceCard> {
               }
             }
             if (dur == null) {
-              final end = local.add(const Duration(hours: 2));
               final startStr = localizations.formatTimeOfDay(
                 TimeOfDay.fromDateTime(local),
                 alwaysUse24HourFormat: always24h,
               );
-              final endStr = localizations.formatTimeOfDay(
-                TimeOfDay.fromDateTime(end),
-                alwaysUse24HourFormat: always24h,
-              );
-              dur = '$startStr - $endStr (2 hrs)';
+              dur = startStr;
             }
 
             return Padding(

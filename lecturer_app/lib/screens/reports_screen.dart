@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import '../services/report_service.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -61,8 +62,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           
           StreamBuilder<QuerySnapshot>(
             stream: appFirestore
-                .collection('attendance_sessions')
+                .collection('active_sessions')
                 .where('lecturer_id', isEqualTo: user.uid)
+                .where('status', isEqualTo: 'completed')
                 .orderBy('created_at', descending: true)
                 .limit(50)
                 .snapshots(),
@@ -117,11 +119,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     Timestamp? endTime = sessionData['end_time'] ?? sessionData['ended_at'];
     String status = sessionData['status'] ?? 'Completed';
     
-    DateTime date = startTime != null ? startTime.toDate() : DateTime.now();
+    DateTime date = (startTime?.toDate() ?? DateTime.now()).toUtc().add(const Duration(hours: 5, minutes: 30));
     String formattedDate = DateFormat('MMMM dd, yyyy').format(date);
     String formattedTime = sessionData['duration_formatted'] ?? 
       (startTime != null && endTime != null
-        ? '${DateFormat('hh:mm a').format(startTime.toDate())} - ${DateFormat('hh:mm a').format(endTime.toDate())}'
+        ? '${DateFormat('hh:mm a').format(startTime.toDate().toUtc().add(const Duration(hours: 5, minutes: 30)))} - ${DateFormat('hh:mm a').format(endTime.toDate().toUtc().add(const Duration(hours: 5, minutes: 30)))}'
         : DateFormat('hh:mm a').format(date));
 
     return GestureDetector(
@@ -213,7 +215,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ],
                 ),
                 Text(
-                  '${studentCount > 0 ? 89 : 0}%',
+                  '${((sessionData['total_students'] as num? ?? 0) > 0 ? studentCount / (sessionData['total_students'] as num) * 100 : 0).toStringAsFixed(2)}%',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -229,27 +231,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildSessionDetail() {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: appFirestore
-          .collection('attendance_sessions')
-          .doc(selectedSessionId)
-          .snapshots(),
+    return FutureBuilder<Map<String, dynamic>>(
+      future: ReportService().sessionReport(selectedSessionId!),
       builder: (context, sessionSnapshot) {
+        if (sessionSnapshot.hasError) return const Center(child: Text('Unable to load report'));
         if (!sessionSnapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        var session = sessionSnapshot.data!;
-        final sessionData = session.data() as Map<String, dynamic>? ?? {};
-        String className = sessionData['class_name'] ?? sessionData['module_code'] ?? sessionData['module'] ?? 'Unknown Class';
-        Timestamp? startTime = sessionData['start_time'] ?? sessionData['started_at'] ?? sessionData['created_at'];
-        Timestamp? endTime = sessionData['end_time'] ?? sessionData['ended_at'];
-        DateTime date = startTime != null ? startTime.toDate() : DateTime.now();
-        String formattedDate = DateFormat('MMMM dd, yyyy').format(date);
-        String formattedTime = sessionData['duration_formatted'] ?? 
-          (startTime != null && endTime != null
-            ? '${DateFormat('hh:mm a').format(startTime.toDate())} - ${DateFormat('hh:mm a').format(endTime.toDate())}'
-            : DateFormat('hh:mm a').format(date));
+        final report = sessionSnapshot.data!;
+        final sessionData = report['session'] as Map<String, dynamic>;
+        String className = (report['module'] as Map<String, dynamic>)['module_name'] as String? ?? 'Unknown Class';
+        String formattedDate = sessionData['date'] as String? ?? 'N/A';
+        final started = DateTime.tryParse(sessionData['started_at'] as String? ?? '');
+        String formattedTime = started == null ? '—' : DateFormat('hh:mm a').format(started.toUtc().add(const Duration(hours: 5, minutes: 30)));
 
         return SingleChildScrollView(
           child: Column(
@@ -319,19 +314,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(height: 20),
                     
                     // Stats
-                    StreamBuilder<QuerySnapshot>(
-                      stream: appFirestore
-                          .collection('attendance_records')
-                          .where('session_id', isEqualTo: selectedSessionId)
-                          .snapshots(),
-                      builder: (context, recordsSnapshot) {
-                        int presentCount = recordsSnapshot.hasData
-                            ? recordsSnapshot.data!.docs.length
-                            : 0;
-                        int totalStudents = 45; // You could fetch from class data
-                        int percentage = totalStudents > 0
-                            ? ((presentCount / totalStudents) * 100).round()
-                            : 0;
+                    Builder(
+                      builder: (context) {
+                        final totals = report['totals'] as Map<String, dynamic>;
+                        int presentCount = (totals['total_present'] as int) + (totals['total_excused'] as int);
+                        int totalStudents = totals['total_students'] as int;
+                        String percentage = (totals['attendance_percentage'] as num).toStringAsFixed(2);
 
                         return Container(
                           padding: const EdgeInsets.all(16),
@@ -486,27 +474,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
         
         // Students List
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: appFirestore
-                .collection('attendance_records')
-                .where('session_id', isEqualTo: selectedSessionId)
-                .orderBy('marked_at', descending: false)
-                .snapshots(),
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: ReportService().sessionReport(selectedSessionId!),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              if (snapshot.hasError) return const Center(child: Text('Unable to load report'));
+              if (!snapshot.hasData || (snapshot.data!['records'] as List<dynamic>).isEmpty) {
                 return const Center(child: Text('No students recorded'));
               }
 
-              var students = snapshot.data!.docs;
+              var students = List<Map<String, dynamic>>.from(snapshot.data!['records'] as List<dynamic>);
               
               // Filter by search
               if (_searchController.text.isNotEmpty) {
                 students = students.where((doc) {
-                  String regNo = doc.get('reg_no').toString().toLowerCase();
+                  String regNo = doc['reg_no'].toString().toLowerCase();
                   return regNo.contains(_searchController.text.toLowerCase());
                 }).toList();
               }
@@ -515,11 +500,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: students.length,
                 itemBuilder: (context, index) {
-                  var student = students[index];
-                  final studentData = student.data() as Map<String, dynamic>? ?? {};
+                  final studentData = students[index];
                   String regNo = studentData['reg_no'] ?? '';
-                  Timestamp? markedAt = studentData['marked_at'] ?? studentData['timestamp'];
-                  String time = markedAt != null ? DateFormat('hh:mm a').format(markedAt.toDate()) : '--';
+                  String time = studentData['time_marked'] as String? ?? '--';
                   String durationDisplay = studentData['duration_formatted'] ?? time;
 
                   return Container(
@@ -584,11 +567,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 ),
                               ),
                             const SizedBox(height: 4),
-                            const Icon(
-                              Icons.check_circle,
-                              color: Color(0xFF4CAF50),
-                              size: 20,
-                            ),
+                            Text(studentData['saved_status'] as String? ?? 'Absent'),
                           ],
                         ),
                       ],

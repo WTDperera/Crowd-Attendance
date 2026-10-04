@@ -105,7 +105,7 @@ The student probe checks actual Dart SDK writes with the student login's field s
 
 Firebase documents [demo projects and Auth emulator/custom-token connections](https://firebase.google.com/docs/emulator-suite/connect_auth), [Firestore emulator configuration](https://firebase.google.com/docs/emulator-suite/connect_firestore), and [client rules testing](https://firebase.google.com/docs/rules/unit-tests). The implementation follows those mechanisms with stricter local target guards.
 
-The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions, `test:p04` adds enrollment/API access regressions, and `test:p05` adds round rules checks. P06–P13, CI workflows and production deployment require their own authorized phases.
+The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions, `test:p04` adds enrollment/API access regressions, and `test:p05` adds round rules checks. P06/P07 commands are documented below. P08–P13, CI workflows and production deployment require their own authorized phases.
 
 ## P04 enrollment and access checks
 
@@ -159,4 +159,24 @@ The operation is deliberately bounded to at most 50 roster members, 50 round doc
 
 Clients cannot mutate completed projections, correction audits or module/catalog aggregates. Normal scans remain pending until API finalization. Outside QA, lecturer builds require explicit HTTPS `--dart-define=API_BASE_URL=https://your-api-host`, as the student enrollment client already does. Missing/offline API reports failure and does not claim completion. No API URL or production deployment is inferred.
 
-Rebuild the normal main.dart lecturer QA APK after drive. Stop API, Firebase and the dedicated Android emulator afterward. See [P06 report](reports/P06.md) for actual results and manual Git commands. P07 report/workbook reconciliation and physical BLE remain separate gates.
+Rebuild the normal main.dart lecturer QA APK after drive. Stop API, Firebase and the dedicated Android emulator afterward. See [P06 report](reports/P06.md) for actual results and manual Git commands. P07 report/workbook reconciliation is documented below; physical BLE remains a separate gate.
+
+## P07 reports and workbooks
+
+With Firebase stopped, run `npm.cmd run test:p07` inside `qa`. It includes the earlier P02–P06 suites and the report policy, actual API and serialized XLSX checks. For a running local emulator session, `node scripts/run.cjs report-tests` runs the P07 subset. Pure checks can run from the repository root with `node --test qa/tests/report-policy.test.cjs qa/tests/workbook.test.cjs`.
+
+Reports count completed eligible classes once. New classes use their saved roster; a later joiner has N/A for earlier classes. Classes without a saved roster explicitly report `roster_source: legacy_enrollment`; exact past enrollment cannot be recovered from missing historical data. Manual corrections supersede stale projections. Unresolved evidence conflicts get no credit and remain flagged in API results, the student card and workbook comments. Profile counters are not a report source. Date filters accept YYYY-MM-DD in Asia/Colombo, inclusive start and exclusive midnight after the end day. Eligibility uses raw counts >=80%; displayed percentages use two decimals. Zero classes yield 0% and no eligibility.
+
+`GET /api/student/attendance-summary` derives identity from the verified token, checks an active student profile, and returns only that student's module metrics/records. Stats and lecturer report adapters require the existing explicit HTTPS `API_BASE_URL` outside QA. Reports require an available API and never silently fall back to stale counters. No production API has been deployed.
+
+Workbook builders live in `frontend/src/services/attendanceWorkbook.js`; download/auth side effects remain in `attendanceExportService.js`. Tests write/read actual XLSX bytes, check cached results and independently evaluate the generated COUNTIF/IF/ROUND subset. They do not run an Excel or LibreOffice calculation engine. The 100,000 denominator threshold case is an arithmetic fixture, not a workbook with more than Excel's column limit or a capacity test.
+
+For Android, start the dedicated QA AVD plus `npm.cmd run emulators` and `npm.cmd run api`. Run `node scripts/run.cjs p07-fixture` from `qa` before each app's probe. The fixture deliberately includes C's excused correction, stale absence and wrong profile counter. From each respective app folder:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/report_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' build apk --debug --no-pub -t lib/main.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+```
+
+Student probes cover the actual report service, a focused report-card eligibility boundary and Colombo date rendering; lecturer probes call the actual report adapter. Record dates retain their actual UTC instant until displayed in Colombo time. Missing durations no longer invent a two-hour attendance interval. They do not establish normal UI journeys or physical BLE success. Stop the owned QA processes afterward. See [P07 report](reports/P07.md). P08 requires its own approval/start instruction; student Windows tests remain deferred.

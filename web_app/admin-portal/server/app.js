@@ -15,6 +15,7 @@ function createApp() {
   app.use('/api', require('./routes/students'));
   app.use('/api', require('./routes/enrollment'));
   app.use('/api', require('./routes/modules'));
+  app.use('/api', require('./routes/studentReports'));
   app.use('/api', require('./routes/moduleManagement'));
   app.use('/api/attendance', require('./routes/attendanceRoutes'));
   return app;

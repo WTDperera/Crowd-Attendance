@@ -9,6 +9,9 @@ class ModuleStats {
   final Map<DateTime, String> recordDurations;
   final int presentCount;
   final int totalModuleSessions;
+  final List<String> conflicts;
+  bool get eligible =>
+      totalModuleSessions > 0 && presentCount * 100 >= totalModuleSessions * 80;
 
   const ModuleStats({
     this.moduleId,
@@ -21,5 +24,6 @@ class ModuleStats {
     this.recordDurations = const <DateTime, String>{},
     required this.presentCount,
     required this.totalModuleSessions,
+    this.conflicts = const <String>[],
   });
 }

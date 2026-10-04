@@ -16,9 +16,15 @@ class ApiClient {
   ApiClient({FirebaseAuth? auth}) : _auth = auth ?? appAuth;
   final FirebaseAuth _auth;
 
-  Future<Map<String, dynamic>> post(
+  Future<Map<String, dynamic>> post(String path, Map<String, dynamic> body) =>
+      _request('POST', path, body);
+
+  Future<Map<String, dynamic>> get(String path) => _request('GET', path, null);
+
+  Future<Map<String, dynamic>> _request(
+    String method,
     String path,
-    Map<String, dynamic> body,
+    Map<String, dynamic>? body,
   ) async {
     QaConfig.validate();
     final base = QaConfig.enabled
@@ -39,11 +45,11 @@ class ApiClient {
     final client = HttpClient();
     try {
       final request = await client
-          .postUrl(uri.resolve(path))
+          .openUrl(method, uri.resolve(path))
           .timeout(const Duration(seconds: 15));
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-      request.write(jsonEncode(body));
+      if (body != null) request.write(jsonEncode(body));
       final response = await request.close().timeout(
         const Duration(seconds: 15),
       );

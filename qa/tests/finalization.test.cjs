@@ -16,6 +16,9 @@ const apps = [], tokens = {};
 const sid = 'p06-session';
 const recordId = uid => `${sid}.${Buffer.from(uid).toString('base64').replaceAll('+','-').replaceAll('/','_')}`;
 async function call(uid, action, body = {}) {
+  // A paused host can outlive a cached ID token. Use the SDK's normal refresh
+  // behavior before each authenticated operation; server checks stay unchanged.
+  tokens[uid] = await getAuth(apps[uid === 'qa-lecturer-a' ? 0 : 1]).currentUser.getIdToken();
   return fetch(`${base}/api/attendance/session/${sid}/${action}`, { method: 'POST', headers: {
     'Content-Type': 'application/json', Authorization: `Bearer ${tokens[uid]}` }, body: JSON.stringify(body) });
 }

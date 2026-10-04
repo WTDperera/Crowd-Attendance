@@ -676,7 +676,7 @@ function ModuleDetailsPage() {
                 const presentCount = stats ? stats.present : 0
                 const absentCount = stats ? stats.absent : totalSessions
                 const total = stats ? stats.total : totalSessions
-                const percentage = stats ? Math.round(stats.percentage) : 0
+                const percentage = stats ? Number(stats.percentage).toFixed(2) : '0.00'
                 const isCellLoading = isLoadingSummary && !attendanceSummary
 
                 return (
