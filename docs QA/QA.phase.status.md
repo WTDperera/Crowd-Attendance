@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P10 only — completed, awaiting review
+**Current authorized phase:** P12 only — ready for review, software-only scope
 
-**Last approved phase:** P09
+**Last approved phase:** P11
 
-**Implementation status:** P01–P09 approved; P10 READY_FOR_REVIEW. P11–P13 are not authorized.
+**Implementation status:** P01–P11 approved; P12 READY_FOR_REVIEW for the user-narrowed software-only scope. Physical-device checks are deferred by user instruction; P13 is not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -20,9 +20,9 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 | P07 — Report and workbook correctness | APPROVED | 2026-10-04: “I approve P06. Please start P07” | [P07 report](../qa/reports/P07.md): final combined 64/64; Android student 3/3, lecturer 1/1; serialized XLSX/formula checks; both normal QA APKs and QA web build pass; analysis limits recorded | 2026-10-04: “I approve P07. Please start P08” |
 | P08 — UI components and retained demo features | APPROVED | 2026-10-04: “I approve P07. Please start P08” | [P08 report](../qa/reports/P08.md): combined 94/94; Android student 6/6, lecturer 7/7; retained Android P05 2/2 and pure 11/11; actual form persistence/fault recovery; normal/QA web and both Android APK builds pass; baseline lint limits recorded | 2026-10-04: “I approve P08. Please start P09” |
 | P09 — Automated browser and mobile journeys | APPROVED | 2026-10-04: “I approve P08. Please start P09” | [P09 report](../qa/reports/P09.md): clean shared chain lecturer Android 1/1 → Playwright 2/2 → student Android 1/1; eight axe states, two reviewed web screenshots; retained 94/94; both final normal QA APKs and normal/QA web builds pass; native/accessibility/analysis limits recorded | 2026-10-05: “I approve P09. Please start P10” |
-| P10 — Security checks and modest load scripts | READY_FOR_REVIEW | 2026-10-05: “I approve P09. Please start P10” | [P10 report](../qa/reports/P10.md): security 6/6, harness 4/4, retained 94/94; pinned redacted scans with explicit remaining dispositions; final load 191 requests, three expected failures, zero unexpected errors and reconciled ledger; normal/QA web builds pass | None |
-| P11 — Test commands and GitHub Actions | NOT_STARTED | None | None | None |
-| P12 — Actual demo devices and failure checks | NOT_STARTED | None | None | None |
+| P10 — Security checks and modest load scripts | APPROVED | 2026-10-05: “I approve P09. Please start P10” | [P10 report](../qa/reports/P10.md): security 6/6, harness 4/4, retained 94/94; pinned redacted scans with explicit remaining dispositions; final load 191 requests, three expected failures, zero unexpected errors and reconciled ledger; normal/QA web builds pass | 2026-10-05: “I approve P10. Please start P11” |
+| P11 — Test commands and GitHub Actions | APPROVED | 2026-10-05: “I approve P10. Please start P11” | [P11 report](../qa/reports/P11.md): unified suites propagate failures; local workflow validation; retained94+6, unit15+11, Android widget6+7/service1+1+2/shared journey1→2→1; security4+6; load191 requests; builds pass; baseline full lint fails; hosted CI unrun | 2026-10-05: “I approve P11. Please start P12” |
+| P12 — Actual demo devices and failure checks | READY_FOR_REVIEW — software-only scope | 2026-10-05: “I approve P11. Please start P12” | [P12 report](../qa/reports/P12.md): user said “no need tto do that” to physical-phone checks; E16/E17 and physical E20 deferred, not passed; prior P11 software evidence referenced, no new functional run | None |
 | P13 — Final regression and submission pack | NOT_STARTED | None | None | None |
 
 ## Status rules
@@ -34,6 +34,24 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-05 — “I approve P11. Please start P12” approves P11 and authorizes P12 only. When asked to connect two Android phones and operate native permission/Bluetooth controls, the user answered “no need tto do that”. Physical-phone verification is therefore deferred at the user's request; the claimed P12 demonstration is narrowed to software-only evidence with simulated radio callbacks. This is neither a physical pass nor approval of P12. P13 remains unauthorized.
+
+## P12 review checkpoint — 2026-10-05
+
+P12 is **READY_FOR_REVIEW for the user-narrowed software-only scope**. [Report, scope decision, verification limits and manual Git commands](../qa/reports/P12.md). E16 native permission/Bluetooth recovery, E17 actual two-phone advertising/scanning and physical/manual E20 are deferred by user instruction. Actual-device restart/network/radio trials remain unrun. Prior approved P11 Android/browser/software persistence and recovery evidence remains historical; no new P12 functional tests were run or inferred from those results.
+
+Read-only adb inventory is empty; QA listener count is zero. Existing normal-entry QA APK hashes were recorded as available artifacts, not fresh builds or installed-phone evidence. MAIN/HEAD/origin remain unchanged; index empty. All 16 pending P11 files are preserved. P12 edits only this tracker and its new report; no application/Git/live-data changes, hosted CI, physical radio trial or participant UAT. P12 approval and a separate P13 start instruction are still required.
+
+2026-10-05 — “I approve P10. Please start P11” approves P10 and starts P11 only. Initial clean worktree/index, MAIN, HEAD `fa1a20f7c1422f649837f9ed945e79ad4e3258fc`; P10 committed externally. Android scope and student Windows deferral persist. P12–P13 remain unauthorized.
+
+## P11 review checkpoint — 2026-10-05
+
+P11 is **READY_FOR_REVIEW**, not approved. [Report, command map, actual results and exact manual inventory](../qa/reports/P11.md). Named categories reuse existing suites; missing/empty files, failed/timed-out children, zero passing results, unsafe flags and physical-device prerequisites fail explicitly. Raw diagnostics stay ignored; CI uploads narrow JSON command summaries only. Pinned Windows jobs and optional prepared-runner Android journey pass local actionlint/PowerShell validation; no hosted execution or runner registration occurred.
+
+Actual retained regression94+6, web unit15, lecturer unit11, bounded property1, React25, API49/rules29/rounds17/integration14/smoke5 pass; counts overlap. Android widget student6/lecturer7 and service1+1+2 pass. Final shared Android→Chromium→Android chain1→2→1 passes with teardown excluded and both normal QA APKs rebuilt. Standalone eight-state axe/two-screenshot check passes. Fresh security harness4/API6 and exact disposition review pass; existing19 identifiers and six package/seven advisory occurrences remain reviewed, not repaired. Local load191 requests has three expected outage failures, zero unexpected errors and reconciled ledger. Normal/QA web builds pass; strict full static command retains10 lint errors/two warnings and does not reach broad Flutter analysis.
+
+Branch/HEAD/origin unchanged, index empty; manual inventory exactly16 files. Owned QA services and agent-started AVD stopped, zero QA listeners, empty adb list. No Git mutation/deployment/live Firebase operation. P12–P13 remain unauthorized; student Windows, physical BLE/native permission/UAT and hosted CI remain unverified/deferred.
 
 ## P10 review checkpoint — 2026-10-05
 

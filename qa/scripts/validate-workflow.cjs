@@ -1,0 +1,13 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const crypto=require('node:crypto');
+const {spawnSync}=require('node:child_process');
+const {root,requireFiles}=require('./command.cjs');
+const pin=require('./toolchain.json').actionlint;
+requireFiles(['.github/workflows/qa.yml']);
+const binary=path.join(root,'qa/.cache/p11-tools/actionlint/actionlint.exe');
+if(crypto.createHash('sha256').update(fs.readFileSync(binary)).digest('hex')!==pin.binarySha256)throw Error('Actionlint checksum mismatch; install pinned CI tools');
+const result=spawnSync(binary,['-color','-shellcheck=','-pyflakes=',path.join(root,'.github/workflows/qa.yml')],{cwd:root,encoding:'utf8',windowsHide:true});
+if(result.stdout)process.stdout.write(result.stdout);
+if(result.stderr)process.stderr.write(result.stderr);
+process.exitCode=result.status??1;

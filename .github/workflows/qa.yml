@@ -1,0 +1,209 @@
+name: Local QA suites
+on:
+  push:
+    branches: [MAIN]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      android:
+        description: Run shared Android/browser journey on dedicated Windows QA emulator runner
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: qa-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  web:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10'
+      - name: Restore locked Node dependencies without install scripts
+        run: |
+          foreach ($folder in @('qa','web_app/admin-portal/server','web_app/admin-portal/frontend')) {
+            Push-Location $folder
+            npm ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'Locked dependency restore failed' }
+            Pop-Location
+          }
+      - name: Install checksum-pinned validation and security tools
+        run: |
+          & ./qa/scripts/install-ci-tools.ps1
+          & ./qa/security/install.ps1
+      - name: Validate workflow and focused static checks
+        working-directory: qa
+        run: |
+          npm run test:workflow
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:static
+          exit $LASTEXITCODE
+      - name: Unit and retained regression
+        working-directory: qa
+        run: |
+          npm run test:unit:web
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:regression
+          exit $LASTEXITCODE
+      - name: Normal and isolated web bundles
+        working-directory: qa
+        run: npm run test:build
+      - name: Reviewed security dispositions and API regressions
+        working-directory: qa
+        run: npm run test:security
+      - name: Modest local performance and recovery
+        working-directory: qa
+        run: npm run test:performance
+      - name: Publish safe command summaries only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-command-summaries
+          path: qa/artifacts/p11/*.json
+          retention-days: 7
+          include-hidden-files: false
+          if-no-files-found: warn
+  browser:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10'
+      - name: Locked dependencies and pinned Chromium
+        run: |
+          foreach ($folder in @('qa','web_app/admin-portal/server','web_app/admin-portal/frontend')) {
+            Push-Location $folder
+            npm ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'Locked dependency restore failed' }
+            Pop-Location
+          }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $PWD 'qa/.cache/playwright'
+          node qa/node_modules/@playwright/test/cli.js install chromium
+          exit $LASTEXITCODE
+      - name: Selected web accessibility and reviewed visual comparisons
+        working-directory: qa
+        run: npm run test:visual
+      - name: Publish safe browser command summaries only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-command-summaries
+          path: qa/artifacts/p11/*.json
+          retention-days: 7
+          include-hidden-files: false
+  android-build:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.21.0'
+      - name: Restore locked Android dependencies
+        run: |
+          foreach ($folder in @('student_app','lecturer_app')) {
+            Push-Location $folder
+            flutter pub get --enforce-lockfile
+            if ($LASTEXITCODE -ne 0) { throw 'Flutter lockfile restore failed' }
+            Pop-Location
+          }
+          $gradleQa = '-Dorg.gradle.java.home="' + $env:JAVA_HOME + '" -Dorg.gradle.daemon=false'
+          Add-Content $env:GITHUB_ENV ('GRADLE_OPTS=' + $gradleQa)
+      - name: Lecturer pure domain tests and both QA Android APK builds
+        working-directory: qa
+        run: |
+          npm run test:unit:mobile
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:property
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:build:android
+          exit $LASTEXITCODE
+      - name: Publish safe Android command summaries only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-build-command-summaries
+          path: qa/artifacts/p11/*.json
+          retention-days: 7
+          include-hidden-files: false
+  android-journey:
+    if: github.event_name == 'workflow_dispatch' && inputs.android
+    runs-on: [self-hosted, Windows, X64, crowd-attendance-qa]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.21.0'
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21.0.11+10'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: '3.47.6'
+          channel: stable
+      - name: Restore locked dependencies on prepared emulator runner
+        run: |
+          foreach ($folder in @('qa','web_app/admin-portal/server','web_app/admin-portal/frontend')) {
+            Push-Location $folder
+            npm ci --ignore-scripts --no-audit --no-fund
+            if ($LASTEXITCODE -ne 0) { throw 'Locked dependency restore failed' }
+            Pop-Location
+          }
+          foreach ($folder in @('student_app','lecturer_app')) {
+            Push-Location $folder
+            flutter pub get --enforce-lockfile
+            if ($LASTEXITCODE -ne 0) { throw 'Flutter lockfile restore failed' }
+            Pop-Location
+          }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $PWD 'qa/.cache/playwright'
+          node qa/node_modules/@playwright/test/cli.js install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $gradleQa = '-Dorg.gradle.java.home="' + $env:JAVA_HOME + '" -Dorg.gradle.daemon=false'
+          Add-Content $env:GITHUB_ENV ('GRADLE_OPTS=' + $gradleQa)
+      - name: Run on prepared pinned QA runner with emulator-5580
+        working-directory: qa
+        run: npm run test:e2e
+      - name: Publish safe journey command summaries only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-journey-command-summaries
+          path: qa/artifacts/p11/*.json
+          retention-days: 7
+          include-hidden-files: false

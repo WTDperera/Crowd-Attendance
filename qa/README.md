@@ -1,4 +1,6 @@
-# Local QA setup — P02
+# Local QA setup and unified commands
+
+Use the [P11 command map](#p11-unified-test-commands-and-ci) for the current runners. Earlier phase sections preserve their fixture assumptions and evidence; `npm test` now runs the web unit/runner checks, including the original configuration guards.
 
 This harness uses only `demo-crowd-attendance-qa`, Auth at `127.0.0.1:9099`, and Firestore at `127.0.0.1:8080`. It does not use a service-account key or the production `.env`. Conflicting project/host/credential settings cause an error before seed/reset. There is no live-project fallback. Existing `scripts/firestore/` utilities are not reused because they accept arbitrary project IDs and ambient credentials.
 
@@ -240,3 +242,53 @@ The axe tag set is WCAG 2 A/AA and 2.1 A/AA. Automatic checks do not establish c
 Retain these **manual native permission checks for P12**: fresh-install student Advertise/Connect/location allow and deny; lecturer Scan/Connect/location allow and deny; Bluetooth off/on, stop/restart, logout/navigation during an actual broadcast/scan, and permission revocation. Use real test phones and record model/OS/outcomes. Idle student navigation/logout is covered without granting or requesting native radio permission; actual advertising and permission-plugin recovery are unverified.
 
 Stop the owned API/web/Firebase/Android processes after testing. With their ports free, `npm.cmd run test:p08` reruns the retained 94 checks on a fresh seed; it intentionally resets the shared journey ledger. See [P09 evidence](reports/P09.md). P10 requires separate approval/start.
+
+## P11 unified test commands and CI
+
+Run these from `qa`. Earlier phase instructions remain historical/reusable; `test:p03`–`test:p09:web` aliases are preserved. Install all three npm lockfiles (QA/server/frontend) before Node/browser suites. CI uses `npm ci --ignore-scripts --no-audit --no-fund`; required build binaries are supplied by locked platform packages. Install both Flutter locks with `flutter pub get --enforce-lockfile` before Android/domain commands.
+
+| Command (`npm.cmd run …`) | What it executes |
+|---|---|
+| `test:static` | Runner/server-route JavaScript syntax and explicitly listed frontend QA/bootstrap/form lint subset. This is focused static verification. |
+| `test:static:full` | Full frontend ESLint, then both Flutter analyses, failing at the first nonzero result. Known baseline ESLint findings currently make this fail; it is not a clean full-analysis claim. |
+| `test:build` / `test:build:android` | Normal + guarded QA web bundles / both normal-entry QA debug Android APKs. |
+| `test:unit:web` (`npm test`) | Config guards, report policy/workbook oracles and runner contract cases. |
+| `test:unit:mobile` / `test:unit` | Lecturer pure round/gate domain tests / web unit then lecturer domain tests. Student Windows host tests remain deferred. |
+| `test:component` | Existing 25 React auth/forms/routes cases. |
+| `test:widget` | Existing student and lecturer P08 integration targets on Android, including their widget and actual-service cases. No Windows widget fallback. |
+| `test:api` / `test:contract` | Same explicit profile/enrollment/finalization/report/P10 malformed API files. Some files include rules assertions; counts overlap other categories. |
+| `test:rules` | Profile, enrollment/access and durable-round rules files using actual application rules. |
+| `test:integration` | P02 fixture/rules/API bootstrap plus P07 real report/persistence contracts. |
+| `test:rounds` | Existing P05 round security and P06 completion/correction files. |
+| `test:mobile` | Actual Android student enrollment, lecturer session access and round persistence probes, each preceded by its required fixture. |
+| `test:e2e` | One seed → lecturer Android journey → full Windows Chromium suite → preservation-only student fixture → student Android journey. One ledger is shared without a reset between clients. Radio callbacks are simulated. |
+| `test:accessibility` / `test:visual` | Same standalone stable-screen browser case: eight selected axe states and two strict reviewed Windows screenshot comparisons. It uses the completed base class and removes only the empty active placeholder; it never manufactures an Android journey ledger. |
+| `test:security` | Fresh pinned Gitleaks + OSV scans, exact valid dispositions, four security harness cases and six local API security cases. Raw findings may exit 1; only a freshly produced scan artifact plus passing review can satisfy the wrapper. |
+| `test:property` | Existing lecturer seeded replay/reversal test, selected by exact name: one bounded property case over 100 repeat counts. No broad randomized/shrinking/fuzzing framework is claimed. |
+| `test:performance` | Existing fixed P10 six-worker load/fault/short-soak with measured latency and ledger reconciliation. |
+| `smoke` / `test:regression` | Original five P02 checks / retained P08 94 then P10 six API cases. No new test duplicates are created to inflate totals. |
+| `test:workflow` | Checksum-pinned actionlint validates the workflow and custom self-hosted label. Bash/Python linters are disabled; workflow scripts use PowerShell. |
+| `test:hardware` | Always fails with the explicit P12/device prerequisite. No BLE/native-permission/UAT pass is inferred. |
+
+Suites use explicit nonempty file inventories. Missing/empty files, unknown categories, extra flags, failed/timed-out children and zero passing test output fail. Node, Vitest, Playwright and Flutter result formats are checked. The runner captures raw diagnostics only under ignored `.cache/p11` and prints/writes a narrow JSON result (label, status, code, count, timeout, duration). `canary-fail`/`canary-empty`/`canary-timeout` are intentional negative checks asserted by the passing runner contract suite. Tool-displayed Flutter counts may include framework teardown; the drive result parser subtracts its known teardown case so teardown alone cannot satisfy a required suite. Phase reports distinguish substantive cases. Category counts overlap and must not be added as unique coverage.
+
+Use Windows x64, Node **24.21.0**, Flutter **3.47.6** / Dart **3.13.5**, JDK **21.0.11+10** for the pinned CI profile. Local Flutter can be selected with `QA_FLUTTER_BIN`; otherwise the existing C:/sdk installation or PATH is used. Android commands require the prepared dedicated API36 AVD as **emulator-5580** (override to any other serial is refused), Android SDK via ANDROID_HOME/ANDROID_SDK_ROOT or the normal local location, both Flutter lockfiles restored and free Firebase/API/web QA ports. They never boot/reuse an arbitrary phone or fall back to desktop. The runner stops only owned API/web process trees, refreshes the real rules, probes before writes, serializes fixture resets and force-stops the two QA apps before fixture changes. Normal-entry QA APK artifacts are rebuilt after drives; this does not claim they were reinstalled on the emulator.
+
+For this local JDK selection, retain the previously verified setup:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+```
+
+Install checksum-pinned tools from repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/scripts/install-ci-tools.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File qa/security/install.ps1
+```
+
+`.github/workflows/qa.yml` defines Windows web/regression/security/performance, standalone browser and Android build/domain jobs on push to MAIN and pull requests. External actions use full commit pins; Node/Flutter/Java versions are exact. Read-only repository permission, no persisted checkout credentials, no production secrets/config, sequential local emulator ownership and job time limits are explicit. The full Android/browser journey is manual `workflow_dispatch` only, requiring a dedicated self-hosted Windows/X64 runner labelled `crowd-attendance-qa`, prepared emulator-5580 and SDK prerequisites. This runner job also restores locked dependencies and the pinned Chromium. Physical checks remain outside Actions.
+
+Only `qa/artifacts/p11/*.json` command summaries are uploaded for seven days. Raw logs, environments, Auth responses, traces, screenshots, APKs, caches and the whole workspace are excluded from upload. Reviewed baseline PNGs remain source-controlled, never updated automatically. The Windows hosted image/fonts can differ from this machine; a visual mismatch must fail and require deliberate review, not an automatic baseline update. Full lint baseline failures remain visible through the strict full command; the automatic job is explicitly focused static verification.
+
+No hosted run has occurred. Review [P11 report](reports/P11.md) before manually staging/pushing. P12 requires separate user approval/start; running these emulator commands does not establish physical BLE or real-user acceptance.
