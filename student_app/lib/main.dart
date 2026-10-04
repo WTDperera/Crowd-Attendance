@@ -952,7 +952,9 @@ class _BroadcastScreenState extends State<BroadcastScreen>
   @override
   void dispose() {
     _pulseController.dispose();
-    _blePeripheral.stop();
+    // An idle screen must not invoke the radio plugin or request permissions
+    // when navigating away/logout. Native advertising is stopped only if used.
+    if (_isBroadcasting) _blePeripheral.stop();
     super.dispose();
   }
 }

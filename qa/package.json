@@ -13,6 +13,7 @@
     "test:p06": "node scripts/run.cjs finalization",
     "test:p07": "node scripts/run.cjs reports",
     "test:p08": "node scripts/run.cjs components",
+    "test:p09:web": "node scripts/run.cjs browser-tests",
     "seed": "node scripts/run.cjs seed",
     "reset": "node scripts/run.cjs reset",
     "api": "node scripts/run.cjs api",
@@ -20,7 +21,9 @@
     "build:web": "node scripts/run.cjs build-web"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@firebase/rules-unit-testing": "5.0.0",
+    "@playwright/test": "1.63.0",
     "firebase": "12.9.0",
     "firebase-tools": "15.32.1"
   }

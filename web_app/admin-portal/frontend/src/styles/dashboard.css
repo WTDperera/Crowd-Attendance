@@ -98,7 +98,7 @@
 .page-subtitle {
   margin: 2px 0 0;
   font-size: 0.85rem;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .role-badge {
@@ -172,7 +172,7 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #6366f1;
+  color: #4f46e5;
   margin-bottom: 4px;
 }
 
@@ -448,7 +448,7 @@
 }
 
 .ghost-button.danger {
-  color: #dc2626;
+  color: #b91c1c;
   background: rgba(220, 38, 38, 0.08);
 }
 
@@ -529,7 +529,7 @@
 }
 
 .text-link.danger {
-  color: #dc2626;
+  color: #b91c1c;
 }
 
 .pagination {

@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P08 only — completed, awaiting review
+**Current authorized phase:** P09 only — completed, awaiting review
 
-**Last approved phase:** P07
+**Last approved phase:** P08
 
-**Implementation status:** P01–P07 approved; P08 READY_FOR_REVIEW. P09–P13 are not authorized.
+**Implementation status:** P01–P08 approved; P09 READY_FOR_REVIEW. P10–P13 are not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -18,8 +18,8 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 | P05 — Durable multiple scan rounds | APPROVED | 2026-10-04: “I approve P04. Please start P05” | [P05 report](../qa/reports/P05.md): combined suite 34/34; unit 11/11; actual Android persistence 2/2; fresh-process prepare/resume 1/1 each; P04 lecturer probe 1/1; normal lecturer QA APK builds | 2026-10-04: “I approve P05. Please start P06” |
 | P06 — Finalization, recovery and corrections | APPROVED | 2026-10-04: “I approve P05. Please start P06” | [P06 report](../qa/reports/P06.md): combined 44/44; unit 11/11; Android P06 1/1, retained P05 2/2 and P04 lecturer 1/1; targeted Dart analysis clean; normal lecturer QA APK builds | 2026-10-04: “I approve P06. Please start P07” |
 | P07 — Report and workbook correctness | APPROVED | 2026-10-04: “I approve P06. Please start P07” | [P07 report](../qa/reports/P07.md): final combined 64/64; Android student 3/3, lecturer 1/1; serialized XLSX/formula checks; both normal QA APKs and QA web build pass; analysis limits recorded | 2026-10-04: “I approve P07. Please start P08” |
-| P08 — UI components and retained demo features | READY_FOR_REVIEW | 2026-10-04: “I approve P07. Please start P08” | [P08 report](../qa/reports/P08.md): combined 94/94; Android student 6/6, lecturer 7/7; retained Android P05 2/2 and pure 11/11; actual form persistence/fault recovery; normal/QA web and both Android APK builds pass; baseline lint limits recorded | None |
-| P09 — Automated browser and mobile journeys | NOT_STARTED | None | None | None |
+| P08 — UI components and retained demo features | APPROVED | 2026-10-04: “I approve P07. Please start P08” | [P08 report](../qa/reports/P08.md): combined 94/94; Android student 6/6, lecturer 7/7; retained Android P05 2/2 and pure 11/11; actual form persistence/fault recovery; normal/QA web and both Android APK builds pass; baseline lint limits recorded | 2026-10-04: “I approve P08. Please start P09” |
+| P09 — Automated browser and mobile journeys | READY_FOR_REVIEW | 2026-10-04: “I approve P08. Please start P09” | [P09 report](../qa/reports/P09.md): clean shared chain lecturer Android 1/1 → Playwright 2/2 → student Android 1/1; eight axe states, two reviewed web screenshots; retained 94/94; both final normal QA APKs and normal/QA web builds pass; native/accessibility/analysis limits recorded | None |
 | P10 — Security checks and modest load scripts | NOT_STARTED | None | None | None |
 | P11 — Test commands and GitHub Actions | NOT_STARTED | None | None | None |
 | P12 — Actual demo devices and failure checks | NOT_STARTED | None | None | None |
@@ -34,6 +34,16 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-04 — “I approve P08. Please start P09” approves P08 and starts P09 only. Android scope and student Windows deferral persist. P10 requires separate approval/start. Initial clean worktree/index, branch MAIN, HEAD `ae72bc90bb1b9d1256fee648c8252e01b8d7e88c`; P08 was committed externally.
+
+## P09 review checkpoint — 2026-10-04
+
+P09 is **READY_FOR_REVIEW**, not approved. [Evidence, verification and exact manual Git commands](../qa/reports/P09.md): normal lecturer Android journey **1/1**, real Chromium **2/2**, normal student Android journey **1/1**. Final clean-fixture repeat uses one persisted class across clients in that order, with no reset between clients. Three simulated scan rounds retain observation counts 2/2/1, completion produces present/absent/left_early, actual browser correction saves Excused and exports [1,0,ex] at 66.67%; student reports agree at A 2/2 and C 1/2. No physical BLE/native permission success is inferred.
+
+Eight loaded web states have zero automatic violations for selected WCAG A/AA tags; seven incomplete contrast rule results remain for manual judgment. Two Windows/Chromium screenshots were reviewed by the agent and compared in three subsequent full passes without updates. Native permission/radio, keyboard/focus/screen-reader and real-user checks remain manual/deferred. Student Windows tests remain deferred. Retained local suite **94/94**, zero skipped; both final normal QA APKs and normal/QA web builds pass. Focused analysis/lint pass; entry-point and prior full-lint baseline findings are recorded, not claimed clean.
+
+Minimal repairs connect the normal session form to durable creation, scope session reads to owned modules, avoid native stop on an idle student broadcaster and fix detected web contrast/filter labels. Rules/backend/attendance policy unchanged. Branch MAIN, HEAD `ae72bc90bb1b9d1256fee648c8252e01b8d7e88c`, origin unchanged; index empty. All owned QA services/AVD stopped, no QA listeners, adb list empty. Manual inventory matches **21** files; no Git mutations/publication/live data operation. P10–P13 remain unauthorized.
 
 2026-10-04 — “I approve P07. Please start P08” approves P07 and starts P08 only. Android scope and student Windows test deferral persist. P09 requires separate approval/start.
 

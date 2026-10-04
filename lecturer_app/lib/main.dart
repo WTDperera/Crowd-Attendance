@@ -9,6 +9,7 @@ import 'dart:io' show Platform;
 import 'package:intl/intl.dart';
 
 import 'services/session_service.dart';
+import 'services/scanner_bindings.dart';
 import 'services/module_service.dart';
 import 'models/module.dart';
 import 'screens/scanner_screen.dart' as scanner;
@@ -777,40 +778,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (endDateTime.isBefore(startDateTime)) {
           endDateTime = endDateTime.add(const Duration(days: 1));
         }
-        final durationMins = endDateTime.difference(startDateTime).inMinutes;
-        final formattedDuration = SessionService.formatDurationString(startDateTime, endDateTime);
-        final startStr = DateFormat('hh:mm a').format(startDateTime);
-        final endStr = DateFormat('hh:mm a').format(endDateTime);
-
-        // Create session in Firestore
-        final sessionRef = await appFirestore
-            .collection('active_sessions')
-            .add({
-              'lecturer_id': widget.user.uid,
-              // Keep existing fields
-              'module': moduleCode,
-              'topic': sessionTopic,
-              // Canonical fields used by services/modules
-              'module_id': selectedModule!.id,
-              'module_code': moduleCode,
-              'session_topic': sessionTopic,
-              'created_at': FieldValue.serverTimestamp(),
-              'started_at': Timestamp.fromDate(startDateTime),
-              'ended_at': Timestamp.fromDate(endDateTime),
-              'start_time': Timestamp.fromDate(startDateTime),
-              'end_time': Timestamp.fromDate(endDateTime),
-              'duration_minutes': durationMins,
-              'duration_formatted': formattedDuration,
-              'duration_range': '$startStr - $endStr',
-              'status': 'active',
-            });
+        // Use the same fixed-roster creation as the durable scanner services.
+        final sessionId = await SessionService().createSession(
+          moduleCode: moduleCode,
+          moduleId: selectedModule!.id,
+          sessionTopic: sessionTopic,
+          startTime: startDateTime,
+          endTime: endDateTime,
+        );
 
         if (mounted) {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ScannerScreen(
-                sessionId: sessionRef.id,
+                sessionId: sessionId,
                 module: moduleCode,
                 topic: sessionTopic,
               ),
@@ -1420,7 +1402,10 @@ class ScannerScreen extends StatelessWidget {
   const ScannerScreen({super.key, required this.sessionId, required this.module, required this.topic});
   final String sessionId, module, topic;
   @override
-  Widget build(BuildContext context) => scanner.ScannerScreen(sessionId: sessionId);
+  Widget build(BuildContext context) => scanner.ScannerScreen(
+    sessionId: sessionId,
+    bindings: ScannerBindingsScope.maybeOf(context)?.forSession(sessionId),
+  );
 }
 
 class StudentAttendance {

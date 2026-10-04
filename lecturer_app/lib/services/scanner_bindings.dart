@@ -1,7 +1,23 @@
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/widgets.dart';
 import 'round_scanner_controller.dart';
 import 'session_service.dart';
+
+// Optional platform adapter for integration tests. Omitted by the normal app.
+class ScannerBindingsScope extends InheritedWidget {
+  const ScannerBindingsScope({
+    super.key,
+    required this.forSession,
+    required super.child,
+  });
+  final ScannerBindings Function(String) forSession;
+  static ScannerBindingsScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<ScannerBindingsScope>();
+  @override
+  bool updateShouldNotify(ScannerBindingsScope oldWidget) =>
+      forSession != oldWidget.forSession;
+}
 
 // UI tests replace only platform/data boundaries. The production screen still
 // uses the same durable controller and the actual session services.

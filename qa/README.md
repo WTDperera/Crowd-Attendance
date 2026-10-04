@@ -204,3 +204,39 @@ $env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jd
 ```
 
 Widget definitions are under each app's `test/ui_components_test.dart`, registered by the Android target. Text/gestures and BLE callbacks are simulated. Actual mobile login, student enrollment and lecturer session creation use the local services; server reads/fresh mounts check persistence. The test keyboard is registered to prevent competition with the native IME; native keyboard behavior and physical BLE are unverified. Student Windows tests remain deferred. Full journeys and accessibility/visual automation belong to P09; physical checks remain P12. See [P08 evidence](reports/P08.md). Stop the owned QA processes afterward.
+
+## P09 — shared browser and Android journeys
+
+P08 was approved and P09 started on 2026-10-04. These tests use the normal app roots and real isolated Auth/Firestore/API services. Lecturer scan packets, permission/radio callbacks and test text input are simulated explicitly; no physical BLE or native permission pass is claimed.
+
+Install QA dependencies from the updated lockfile. Download the pinned browser into the workspace once, from `qa`:
+
+```powershell
+npm.cmd ci --no-audit --no-fund --cache .cache/npm
+$env:PLAYWRIGHT_BROWSERS_PATH = "$PWD/.cache/playwright"
+node node_modules/playwright/cli.js install chromium
+```
+
+Start the existing dedicated Android AVD `crowd_attendance_qa_p02_api36` at port 5580 (headless is supported). Start `npm.cmd run emulators`, `npm.cmd run api` and `npm.cmd run web` in separate terminals under `qa`. Wait for local readiness. The web/API targets must be exactly 127.0.0.1:5173/5000; do not use a silently selected alternate Vite port. Close old mobile apps, then run `node scripts/run.cjs p04-fixture` and require exit 0. If native-listener cancellation makes reset return 499, close the apps and retry; no failed seed is readiness evidence.
+
+Run the following **in order**, sharing the same fixture; do not reset between clients:
+
+1. From `lecturer_app`, run the Android target below. Normal login/session form creates one QA101 class titled `P09 Android simulated ledger`. The actual controller persists three rounds, duplicate suppression, A in all rounds and C in the first two; UI completion and reopening are checked.
+2. From `qa`, run `npm.cmd run test:p09:web`. This runs eight loaded-screen axe scans, compares two reviewed screenshots, then exercises actual browser wrong/correct login, saved absent/excused correction, reload, XLSX download and student account create/edit/delete. It requires the single completed Android class and never invents a replacement. UI correction establishes a repeatable starting status on reruns.
+3. From `qa`, run `node scripts/run.cjs p09-student-fixture` successfully. This idempotently removes only A's QA202 enrollment for the student scenario, preserving the Android class/correction. From `student_app`, run the same Android target. Normal login, wrong/correct enrollment, Back/reopen, fresh app mount, logout and C login verify actual reports: A 2/2, C 1/2 after correction, QA202 0/0.
+
+From each respective app folder:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/journey_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' build apk --debug --no-pub -t lib/main.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+```
+
+Drive replaces the app APK with the test target; the build restores the normal QA APK. Browser artifacts, downloaded synthetic workbook, axe JSON and failure traces are ignored under `qa/artifacts/p09/browser`. Only the two reviewed PNG baselines are proposed for Git. Review [baseline notes](browser/baselines/README.md); update deliberately with `npm.cmd run test:p09:web -- --grep "stable core" --update-snapshots`, inspect both images, then rerun without that flag. Never update a baseline to hide a regression.
+
+The axe tag set is WCAG 2 A/AA and 2.1 A/AA. Automatic checks do not establish complete accessibility; incomplete checks, focus/modal behavior, screen readers and native keyboard require manual review. Windows/Chromium screenshots are platform-specific; no mobile golden or other-browser visual pass is claimed. Student Windows desktop tests remain deferred.
+
+Retain these **manual native permission checks for P12**: fresh-install student Advertise/Connect/location allow and deny; lecturer Scan/Connect/location allow and deny; Bluetooth off/on, stop/restart, logout/navigation during an actual broadcast/scan, and permission revocation. Use real test phones and record model/OS/outcomes. Idle student navigation/logout is covered without granting or requesting native radio permission; actual advertising and permission-plugin recovery are unverified.
+
+Stop the owned API/web/Firebase/Android processes after testing. With their ports free, `npm.cmd run test:p08` reruns the retained 94 checks on a fresh seed; it intentionally resets the shared journey ledger. See [P09 evidence](reports/P09.md). P10 requires separate approval/start.

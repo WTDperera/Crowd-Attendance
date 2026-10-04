@@ -135,20 +135,34 @@ class SessionService {
   }
 
   /// Get active sessions list for a lecturer
-  Stream<QuerySnapshot> getActiveSessionsStream(String lecturerId) {
-    return _firestore
-        .collection('active_sessions')
-        .where('lecturer_id', isEqualTo: lecturerId)
-        .where('status', isEqualTo: 'active')
-        .snapshots();
-  }
+  Stream<QuerySnapshot> getActiveSessionsStream(String lecturerId) =>
+      _ownedSessionsStream(lecturerId, 'active');
 
   /// Get completed sessions list for a lecturer
-  Stream<QuerySnapshot> getCompletedSessionsStream(String lecturerId) {
-    return _firestore
+  Stream<QuerySnapshot> getCompletedSessionsStream(String lecturerId) =>
+      _ownedSessionsStream(lecturerId, 'completed');
+
+  Stream<QuerySnapshot> _ownedSessionsStream(
+    String lecturerId,
+    String status,
+  ) async* {
+    // Rules require ownership of both the lecturer and module. A query scoped
+    // only to lecturer_id cannot prove module ownership. Resolve owned module
+    // IDs from the server and constrain the session query too.
+    final modules = await _firestore
+        .collection('modules')
+        .where('lecturer_id', isEqualTo: lecturerId)
+        .get(const GetOptions(source: Source.server));
+    final ids = modules.docs.map((doc) => doc.id).toList();
+    if (ids.isEmpty) return;
+    if (ids.length > 30) {
+      throw StateError('Too many modules for this session query.');
+    }
+    yield* _firestore
         .collection('active_sessions')
         .where('lecturer_id', isEqualTo: lecturerId)
-        .where('status', isEqualTo: 'completed')
+        .where('module_id', whereIn: ids)
+        .where('status', isEqualTo: status)
         .snapshots();
   }
 }

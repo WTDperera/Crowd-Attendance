@@ -143,6 +143,7 @@ function StudentsList() {
           }}
         />
         <select
+          aria-label="Device status filter"
           value={statusFilter}
           onChange={(event) => {
             setStatusFilter(event.target.value)
@@ -156,6 +157,7 @@ function StudentsList() {
           ))}
         </select>
         <select
+          aria-label="Login status filter"
           value={loginFilter}
           onChange={(event) => {
             setLoginFilter(event.target.value)

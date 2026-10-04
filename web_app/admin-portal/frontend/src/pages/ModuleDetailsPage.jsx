@@ -867,7 +867,7 @@ function ModuleDetailsPage() {
                   >
                     <span
                       className="helper-text"
-                      style={{ color: '#16a34a' }}
+                      style={{ color: '#15803d' }}
                     >
                       Present
                     </span>
@@ -885,7 +885,7 @@ function ModuleDetailsPage() {
                   >
                     <span
                       className="helper-text"
-                      style={{ color: '#dc2626' }}
+                      style={{ color: '#b91c1c' }}
                     >
                       Absent
                     </span>
