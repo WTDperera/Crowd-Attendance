@@ -33,14 +33,17 @@ void main() {
         moduleId: 'QA101',
         sessionTopic: 'P04 permission probe',
       );
+      final roundId = await service.beginRound(sessionId);
       await service.markAttendance(
         sessionId: sessionId,
+        roundId: roundId,
         studentId: 'qa-student-a',
         regNo: 'QA001',
         rssi: -50,
       );
       await service.markAttendance(
         sessionId: sessionId,
+        roundId: roundId,
         studentId: 'qa-student-a',
         regNo: 'QA001',
         rssi: -50,
@@ -51,6 +54,7 @@ void main() {
       expect(nested.docs.single.data()['student_uid'], 'qa-student-a');
       // One close checks permission compatibility only; retry/round outcome
       // correctness is reserved for P05/P06.
+      await service.completeRound(sessionId, roundId);
       await service.endSession(sessionId, totalStudents: 3);
       final catalog = await appFirestore
           .doc('module_catalog/QA101')

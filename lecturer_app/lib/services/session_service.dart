@@ -2,6 +2,8 @@ import 'package:lecturer_app/services/firebase_environment.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'round_service.dart';
+import 'round_domain.dart';
 
 class SessionService {
   static final SessionService _instance = SessionService._internal();
@@ -10,6 +12,8 @@ class SessionService {
 
   final FirebaseFirestore _firestore = appFirestore;
   final FirebaseAuth _auth = appAuth;
+
+  final RoundService _roundService = RoundService();
 
   String? _activeSessionId;
   String? get activeSessionId => _activeSessionId;
@@ -57,7 +61,7 @@ class SessionService {
       final startStr = DateFormat('hh:mm a').format(start);
       final endStr = DateFormat('hh:mm a').format(end);
 
-      await sessionRef.set({
+      await _roundService.createSession(sessionRef, {
         'session_id': sessionRef.id,
         'lecturer_id': user.uid,
         'module_id': resolvedModuleId,
@@ -85,157 +89,27 @@ class SessionService {
     }
   }
 
-  /// Mark student as present in current session
-  Future<void> markAttendance({
+  Future<String> beginRound(String sessionId) => _roundService.begin(sessionId);
+  Future<void> completeRound(String sessionId, String roundId) =>
+      _roundService.finish(sessionId, roundId);
+  Future<void> cancelRound(String sessionId, String roundId) =>
+      _roundService.finish(sessionId, roundId, cancel: true);
+  Future<Map<String, String>> loadSessionRoster(String sessionId) =>
+      _roundService.loadRoster(sessionId);
+
+  Future<bool> markAttendance({
     required String sessionId,
+    required String roundId,
     required String studentId,
     required String regNo,
     required int rssi,
-  }) async {
-    try {
-      final sessionRef = _firestore
-          .collection('active_sessions')
-          .doc(sessionId);
-      final activeAttendanceRef = sessionRef
-          .collection('attendance')
-          .doc(regNo);
-      final attendanceRef = _firestore.collection('attendance_records').doc();
-
-      final sessionSnap = await sessionRef.get();
-      if (!sessionSnap.exists) {
-        throw Exception('Session not found');
-      }
-      final sessionData = sessionSnap.data() as Map<String, dynamic>;
-      final moduleKey =
-          ((sessionData['module_id'] as String?)?.trim() ??
-                  (sessionData['module_code'] as String?)?.trim() ??
-                  (sessionData['module'] as String?)?.trim() ??
-                  '')
-              .toUpperCase();
-      if (moduleKey.isEmpty) {
-        throw Exception(
-          'Missing module code in session (module_id/module_code/module)',
-        );
-      }
-
-      final now = DateTime.now();
-      final dateString = DateFormat('yyyy-MM-dd').format(now);
-
-      // Check if already marked
-      final existingRecords = await _firestore
-          .collection('attendance_records')
-          .where('session_id', isEqualTo: sessionId)
-          .where('student_id', isEqualTo: studentId)
-          .limit(1)
-          .get();
-
-      if (existingRecords.docs.isNotEmpty) {
-        // Update existing record
-        final batch = _firestore.batch();
-        batch.set(activeAttendanceRef, {
-          'student_uid': studentId,
-          'student_id': studentId,
-          'reg_no': regNo,
-          'timestamp': FieldValue.serverTimestamp(),
-          'date': dateString,
-          'rssi': rssi,
-        }, SetOptions(merge: true));
-
-        batch.update(existingRecords.docs.first.reference, {
-          'scan_count': FieldValue.increment(1),
-          'marked_at': FieldValue.serverTimestamp(),
-          'rssi': rssi,
-        });
-        await batch.commit();
-        return;
-      }
-
-      // Batch write: per-session attendance + root attendance record + session counters.
-      final batch = _firestore.batch();
-      final studentRef = _firestore.collection('students').doc(studentId);
-
-      String? sessionDurationFormatted = sessionData['duration_formatted'];
-      if (sessionDurationFormatted == null &&
-          sessionData['start_time'] != null &&
-          sessionData['end_time'] != null) {
-        final s = (sessionData['start_time'] as Timestamp).toDate();
-        final e = (sessionData['end_time'] as Timestamp).toDate();
-        sessionDurationFormatted = formatDurationString(s, e);
-      }
-
-      batch.set(activeAttendanceRef, {
-        'student_uid': studentId,
-        'student_id': studentId,
-        'reg_no': regNo,
-        'timestamp': FieldValue.serverTimestamp(),
-        'date': dateString,
-        'rssi': rssi,
-        'status': 'pending',
-        if (sessionDurationFormatted != null)
-          'duration_formatted': sessionDurationFormatted,
-        if (sessionData['start_time'] != null)
-          'start_time': sessionData['start_time'],
-        if (sessionData['end_time'] != null)
-          'end_time': sessionData['end_time'],
-      }, SetOptions(merge: true));
-
-      batch.set(attendanceRef, {
-        // New fields requested
-        'student_uid': studentId,
-        'module_id': moduleKey,
-        'session_id': sessionId,
-        'timestamp': FieldValue.serverTimestamp(),
-        'date': dateString,
-
-        // Duration fields
-        if (sessionDurationFormatted != null)
-          'duration_formatted': sessionDurationFormatted,
-        if (sessionData['start_time'] != null)
-          'start_time': sessionData['start_time'],
-        if (sessionData['end_time'] != null)
-          'end_time': sessionData['end_time'],
-        if (sessionData['duration_minutes'] != null)
-          'duration_minutes': sessionData['duration_minutes'],
-
-        // Backward-compatible fields (used by existing student stats code)
-        'record_id': attendanceRef.id,
-        'student_id': studentId,
-        'module_code': moduleKey,
-        'reg_no': regNo,
-        'marked_at': FieldValue.serverTimestamp(),
-        'rssi': rssi,
-        'status': 'pending',
-        'scan_count': 1,
-      });
-
-      batch.update(sessionRef, {
-        'student_count': FieldValue.increment(1),
-        'students_present': FieldValue.arrayUnion([studentId]),
-      });
-
-      // Firestore counter: increment student's attendance count for this module.
-      // Uses merge so it won't overwrite other modules' counters.
-      batch.set(studentRef, {
-        'attendance_module_id': moduleKey,
-        'attendance_counts': {moduleKey: FieldValue.increment(1)},
-      }, SetOptions(merge: true));
-
-      await batch.commit();
-    } catch (e) {
-      throw Exception('Failed to mark attendance: $e');
-    }
-  }
-
-  /// Increment the scans performed count for a session
-  Future<void> incrementScanRound(String sessionId) async {
-    try {
-      await _firestore.collection('active_sessions').doc(sessionId).update({
-        'scans_performed': FieldValue.increment(1),
-      });
-    } catch (e) {
-      throw Exception('Failed to increment scan round: $e');
-    }
-  }
+  }) => _roundService.mark(
+    sessionId: sessionId,
+    roundId: roundId,
+    studentId: studentId,
+    regNo: regNo,
+    rssi: rssi,
+  );
 
   /// End current session
   Future<void> endSession(String sessionId, {int? totalStudents}) async {
@@ -248,7 +122,24 @@ class SessionService {
       final sessionSnapBeforeTx = await sessionRef.get();
       if (sessionSnapBeforeTx.exists) {
         final sessionData = sessionSnapBeforeTx.data() as Map<String, dynamic>;
-        int scansPerformed = sessionData['scans_performed'] ?? 1;
+        Set<String>? completedRounds;
+        if (sessionData['round_schema'] == 2) {
+          if (sessionData['active_round_id'] != null) {
+            throw StateError('Complete or cancel the open round first.');
+          }
+          final rounds = await sessionRef
+              .collection('rounds')
+              .get(const GetOptions(source: Source.server));
+          completedRounds = rounds.docs
+              .where((r) => r.data()['status'] == 'completed')
+              .map((r) => r.id)
+              .toSet();
+          if (completedRounds.isEmpty) {
+            throw StateError('Complete at least one round first.');
+          }
+        }
+        int scansPerformed =
+            completedRounds?.length ?? sessionData['scans_performed'] ?? 1;
         if (scansPerformed < 1) scansPerformed = 1;
 
         final recordsSnap = await _firestore
@@ -263,17 +154,29 @@ class SessionService {
           int scanCount = doc.data().containsKey('scan_count')
               ? doc.get('scan_count')
               : 1;
-          String finalStatus = scanCount >= scansPerformed
-              ? 'present'
-              : 'left_early';
+          String finalStatus = completedRounds == null
+              ? (scanCount >= scansPerformed ? 'present' : 'left_early')
+              : roundOutcome(
+                  List<String>.from(
+                    doc.data()['observed_round_ids'] as List? ?? [],
+                  ),
+                  completedRounds,
+                );
           batch.update(doc.reference, {'status': finalStatus});
 
           String regNo = doc.get('reg_no');
-          batch.update(sessionRef.collection('attendance').doc(regNo), {
-            'status': finalStatus,
-          });
+          batch.update(
+            sessionRef
+                .collection('attendance')
+                .doc(
+                  sessionData['round_schema'] == 2
+                      ? doc.get('student_id')
+                      : regNo,
+                ),
+            {'status': finalStatus},
+          );
 
-          if (finalStatus == 'left_early') {
+          if (finalStatus != 'present') {
             String studentId = doc.get('student_id');
             leftEarlyStudentIds.add(studentId);
             String moduleKey = doc.get('module_code');

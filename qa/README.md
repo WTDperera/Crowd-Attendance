@@ -105,7 +105,7 @@ The student probe checks actual Dart SDK writes with the student login's field s
 
 Firebase documents [demo projects and Auth emulator/custom-token connections](https://firebase.google.com/docs/emulator-suite/connect_auth), [Firestore emulator configuration](https://firebase.google.com/docs/emulator-suite/connect_firestore), and [client rules testing](https://firebase.google.com/docs/rules/unit-tests). The implementation follows those mechanisms with stricter local target guards.
 
-The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions and `test:p04` adds enrollment/API access regressions. P05–P13, CI workflows and production deployment require their own authorized phases.
+The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions, `test:p04` adds enrollment/API access regressions, and `test:p05` adds round rules checks. P06–P13, CI workflows and production deployment require their own authorized phases.
 
 ## P04 enrollment and access checks
 
@@ -126,3 +126,23 @@ $env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jd
 ```
 
 Each app has one substantive P04 scenario; framework teardown adds another displayed count. Probes call actual services, not the normal UI. Stop the API/Firebase/Android emulator processes afterward. If using USB later, port 5000 also needs `adb reverse` alongside Auth/Firestore. See [P04 report](reports/P04.md) for evidence and limits. No live catalog/secret backfill or deployment has been performed.
+
+## P05 durable rounds
+
+Run `npm.cmd run test:p05` inside `qa` with no existing Firebase emulator session. This adds seven round/roster rules cases to the earlier suites (34 cases total). It tests actual application rules; Android tests below exercise actual Dart transactions and the same controller used by the scanner.
+
+New sessions store `round_schema: 2`, a roster fixed at creation, immutable `roster/{studentUid}` eligibility proofs, an open round pointer and explicit round metadata. Each observation lives at `active_sessions/{sessionId}/rounds/{roundId}/observations/{studentUid}`. Summary IDs use the generated session ID plus a dot and the base64url student UID; nested summaries use the UID. Atomic marking updates evidence and both summaries together; later rounds append IDs without incrementing class attendance again. Cancelled rounds retain evidence but are excluded from outcomes. Legacy sessions remain readable through existing paths; scanning requires a newly created version 2 session. No historical migration was performed.
+
+The normal dashboard now delegates to the shared scanner. Start/resume is explicit. Pause, timeout, navigation and radio errors leave the saved round open; **Complete Scan Round** drains writes and records completion. Cancel explicitly excludes the round. An unavailable roster rejects packets, and failed writes stay retryable. Repeated packets are suppressed only within their round. Registration bytes are strict UTF-8 matched exactly against the roster; no hardware byte budget or case-normalization policy is inferred.
+
+Start the dedicated Android AVD and `npm.cmd run emulators`, then seed. From `lecturer_app`:
+
+```powershell
+& 'C:/sdk/flutter/bin/flutter.bat' test --no-pub test/round_domain_test.dart test/detection_gate_test.dart
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/round_persistence_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+```
+
+For an actual process restart, seed again, run the same drive command with `--dart-define=P05_RESTART_PHASE=prepare`, force-stop `com.example.lecturer_app` using adb, then run with `--dart-define=P05_RESTART_PHASE=resume`. **Do not reset/seed between prepare and resume.** Prepare leaves the unique `P05 restart checkpoint` session open in r2; resume must retain r2 and its observation before explicitly starting r3. Each phase has one substantive test. Rebuild the normal main.dart QA APK afterward using the P04 command above.
+
+See [P05 report](reports/P05.md) for evidence. These tests cover synthetic persistence, packet decoding and controller behavior; normal UI journeys, physical BLE, transport outage/reconnect, large rosters and full finalization/correction recovery remain unverified. Version 2 session creation refuses inconsistent enrollment counts or changing profiles rather than capturing a partial roster. P06 remains separately gated.
