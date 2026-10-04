@@ -206,15 +206,15 @@ test('P04 trusted module management publishes safe metadata and refuses bypass/r
   for (const path of ['modules', 'module_catalog', 'module_secrets']) assert.equal((await db.doc(`${path}/QA303`).get()).exists, false);
 });
 
-test('P04 owner-only counter context and module/catalog mirroring retain legitimate mobile writes', async () => {
+test('P04 owner counter permissions retain active-session writes; P06 aggregates require API', async () => {
   const owner = store('qa-lecturer-a');
   const ref = doc(owner, 'students/qa-student-a');
-  await assertSucceeds(updateDoc(ref, { 'attendance_counts.QA101': 2, attendance_module_id: 'QA101' }));
+  await assertSucceeds(updateDoc(ref, { 'attendance_counts.QA101': 2, attendance_module_id: 'QA101', attendance_session_id: 'qa-active' }));
   await assertFails(updateDoc(ref, { 'attendance_counts.QA202': 10, attendance_module_id: 'QA101' }));
   const batch = writeBatch(owner);
   batch.update(doc(owner, 'modules/QA101'), { total_sessions: 2, session_dates: [] });
   batch.update(doc(owner, 'module_catalog/QA101'), { total_sessions: 2, session_dates: [] });
-  await assertSucceeds(batch.commit());
+  await assertFails(batch.commit()); // P06 replaces direct close with trusted atomic API.
   await assertFails(updateDoc(doc(owner, 'module_catalog/QA101'), { total_sessions: 3 }));
   await assertFails(updateDoc(doc(store('qa-lecturer-b'), 'modules/QA101'), { total_sessions: 9 }));
   await assertFails(setDoc(doc(owner, 'active_sessions/qa-cross-module'), { lecturer_id: 'qa-lecturer-a', module_id: 'QA202' }));

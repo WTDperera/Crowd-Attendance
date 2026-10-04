@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P05 only — ready for review
+**Current authorized phase:** P06 only — ready for review
 
-**Last approved phase:** P04
+**Last approved phase:** P05
 
-**Implementation status:** P01–P04 approved; P05 READY_FOR_REVIEW. P06–P13 are not authorized.
+**Implementation status:** P01–P05 approved; P06 READY_FOR_REVIEW. P07–P13 are not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -15,8 +15,8 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 | P02 — Isolated environment and minimum harness | APPROVED | 2026-10-02: “ok I aprove the phase 1 go to the next”; resumed 2026-10-03 for Android only | [P02 report](../qa/reports/P02.md): harness 5/5; student Android 2/2; lecturer Android 2/2; both final QA APKs build; baseline analysis nonzero; student Windows host test deferred by user | 2026-10-04: “I approve P02. Please start P03” |
 | P03 — Role and profile protection | APPROVED | 2026-10-04: “I approve P02. Please start P03” | [P03 report](../qa/reports/P03.md): escalation reproduced before repair; final local suite 15/15; Android profile probe 1/1 per app; normal QA APKs and QA web build pass | 2026-10-04: “I approve P03. Please start P04” |
 | P04 — Enrollment and API ownership | APPROVED | 2026-10-04: “I approve P03. Please start P04” | [P04 report](../qa/reports/P04.md): final combined suite 27/27; actual Android enrollment/session permission scenario 1/1 per app; both normal QA APKs and QA web build pass; baseline analysis limits recorded | 2026-10-04: “I approve P04. Please start P05” |
-| P05 — Durable multiple scan rounds | READY_FOR_REVIEW | 2026-10-04: “I approve P04. Please start P05” | [P05 report](../qa/reports/P05.md): combined suite 34/34; unit 11/11; actual Android persistence 2/2; fresh-process prepare/resume 1/1 each; P04 lecturer probe 1/1; normal lecturer QA APK builds | None |
-| P06 — Finalization, recovery and corrections | NOT_STARTED | None | None | None |
+| P05 — Durable multiple scan rounds | APPROVED | 2026-10-04: “I approve P04. Please start P05” | [P05 report](../qa/reports/P05.md): combined suite 34/34; unit 11/11; actual Android persistence 2/2; fresh-process prepare/resume 1/1 each; P04 lecturer probe 1/1; normal lecturer QA APK builds | 2026-10-04: “I approve P05. Please start P06” |
+| P06 — Finalization, recovery and corrections | READY_FOR_REVIEW | 2026-10-04: “I approve P05. Please start P06” | [P06 report](../qa/reports/P06.md): combined 44/44; unit 11/11; Android P06 1/1, retained P05 2/2 and P04 lecturer 1/1; targeted Dart analysis clean; normal lecturer QA APK builds | None |
 | P07 — Report and workbook correctness | NOT_STARTED | None | None | None |
 | P08 — UI components and retained demo features | NOT_STARTED | None | None | None |
 | P09 — Automated browser and mobile journeys | NOT_STARTED | None | None | None |
@@ -34,6 +34,8 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-04 — “I approve P05. Please start P06” approves P05 and starts P06 only. P07 requires separate approval/start.
 
 2026-10-04 — “I approve P04. Please start P05” approves P04 and starts P05 only. Android scope and Windows deferral persist. P06 requires its own approval/start instruction.
 
@@ -168,3 +170,11 @@ P05 is READY_FOR_REVIEW: durable round/observation identities, immutable eligibi
 P06 has not started and requires explicit approval/start. No phase approval is inferred from these results.
 
 STOPPED — awaiting your approval of P05 and an explicit instruction to start the next phase.
+
+## P06 review checkpoint — 2026-10-04
+
+P06 is READY_FOR_REVIEW. Completion and owner corrections use bounded atomic API transactions, preserving immutable round evidence while reconciling root/nested outcomes, absences, credited membership and counters. Failed commits remain active/retryable; repeated close preserves corrections. Completed projections and aggregate writes are protected from ordinary clients. The final combined local suite passes 44/44, zero skipped; unit tests 11/11; actual Android P06 1/1, retained P05 2/2 and P04 lecturer 1/1. Targeted Dart analysis is clean and the normal lecturer QA APK builds. See [P06 report](../qa/reports/P06.md) for defect reproduction, commands, historical/bounded-data limits and exact manual Git commands.
+
+Final worktree contains only the phase changes, index is empty, branch/HEAD/remote unchanged. No staging, commit, push, deployment or live writes occurred. Dedicated Android, API and Firebase processes are stopped; adb has no device and QA ports have no listeners. Physical BLE, transport outages and P07 report/workbook reconciliation remain unverified. P07 has not started and requires explicit approval/start.
+
+STOPPED — awaiting your approval of P06 and an explicit instruction to start the next phase.

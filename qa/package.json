@@ -10,6 +10,7 @@
     "test:p03": "node scripts/run.cjs security",
     "test:p04": "node scripts/run.cjs access",
     "test:p05": "node scripts/run.cjs rounds",
+    "test:p06": "node scripts/run.cjs finalization",
     "seed": "node scripts/run.cjs seed",
     "reset": "node scripts/run.cjs reset",
     "api": "node scripts/run.cjs api",

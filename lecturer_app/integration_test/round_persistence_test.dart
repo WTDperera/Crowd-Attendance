@@ -185,6 +185,7 @@ void main() {
         };
         expect(outcomes, {
           'qa-student-a': 'present',
+          'qa-student-b': 'absent',
           'qa-student-c': 'left_early',
         });
         final finalStudent = await appFirestore

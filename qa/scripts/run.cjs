@@ -14,7 +14,7 @@ const env = Object.fromEntries(Object.entries(configured).filter(([key]) => allo
 env.FIREBASE_EMULATORS_PATH = path.join(qaDir, '.cache/emulators');
 env.XDG_CONFIG_HOME = path.join(qaDir, '.cache/config'); // Isolate CLI login/preferences too.
 env.CI = 'true'; // Noninteractive CLI; skip remote MOTD/update checks.
-if (['emulators', 'smoke', 'security', 'access', 'rounds'].includes(process.argv[2])) {
+if (['emulators', 'smoke', 'security', 'access', 'rounds', 'finalization'].includes(process.argv[2])) {
   // Firebase requires rules inside its config root. Refresh from the actual
   // application rules on EVERY launch; never maintain permissive QA rules.
   fs.mkdirSync(path.join(qaDir, '.cache'), { recursive: true });
@@ -29,7 +29,9 @@ const actions = {
   security: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/smoke.cjs security'] },
   access: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/smoke.cjs access'] },
   rounds: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/smoke.cjs rounds'] },
+  finalization: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/smoke.cjs finalization'] },
   'round-rules': { args: ['--test', 'tests/round-security.test.cjs'] },
+  'finalization-tests': { args: ['--test', 'tests/finalization.test.cjs'] },
   seed: { args: [path.join(__dirname, 'fixtures.cjs'), 'seed'] },
   'p04-fixture': { args: [path.join(__dirname, 'p04-mobile-fixture.cjs')] },
   reset: { args: [path.join(__dirname, 'fixtures.cjs'), 'reset'] },
@@ -38,7 +40,7 @@ const actions = {
   'build-web': { args: [viteCli, 'build', '--mode', 'qa'], cwd: path.join(root, 'web_app/admin-portal/frontend') },
 };
 const action = actions[process.argv[2]];
-if (!action) throw new Error('Expected emulators, smoke, security, access, rounds, round-rules, seed, p04-fixture, reset, api, web or build-web');
+if (!action) throw new Error('Expected emulators, smoke, security, access, rounds, finalization, finalization-tests, round-rules, seed, p04-fixture, reset, api, web or build-web');
 const child = spawn(process.execPath, action.args, { cwd: action.cwd || qaDir, env, stdio: 'inherit', windowsHide: true });
 child.on('error', error => { console.error(error.message); process.exitCode = 1; });
 child.on('exit', code => { process.exitCode = code ?? 1; });

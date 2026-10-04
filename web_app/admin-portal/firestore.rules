@@ -32,6 +32,10 @@ service cloud.firestore {
       return isOwner(session.lecturer_id) && ownsModule(session.module_id);
     }
 
+    function activeSession(id) {
+      return get(/databases/$(database)/documents/active_sessions/$(id)).data.status == 'active';
+    }
+
     function ownRecord(data) {
       return isStudent() && (data.get('student_uid', '') == request.auth.uid
         || data.get('student_id', '') == request.auth.uid);
@@ -52,6 +56,13 @@ service cloud.firestore {
         && data.get('reg_no', student.reg_no) == student.reg_no;
     }
 
+    function validProvisionalSummary(data, sessionId) {
+      let session = get(/databases/$(database)/documents/active_sessions/$(sessionId)).data;
+      return session.get('round_schema', 1) != 2
+          || (data.status == 'pending'
+            && !data.keys().hasAny(['finalization_version', 'final_status', 'credited', 'excused', 'marked_late', 'manual', 'corrected_at', 'marked_by']));
+    }
+
     function validCounterUpdate() {
       let next = request.resource.data.attendance_counts;
       let previous = resource.data.get('attendance_counts', {});
@@ -61,6 +72,10 @@ service cloud.firestore {
         || (id is string && id != '' && ownsModule(id)
           && (id in resource.data.get('enrolled_module_ids', [])
             || eligibleCounterSession(id))
+          && request.resource.data.get('attendance_session_id', '') != ''
+          && ownsSession(request.resource.data.attendance_session_id)
+          && get(/databases/$(database)/documents/active_sessions/$(request.resource.data.attendance_session_id)).data.module_id == id
+          && activeSession(request.resource.data.attendance_session_id)
           && keys.hasOnly([id]) && next[id] is int && next[id] >= 0));
     }
 
@@ -158,30 +173,37 @@ service cloud.firestore {
       allow create, delete: if false;
       // Only mirrored aggregate fields are writable by the owning mobile
       // lecturer; all metadata/secret changes use trusted management routes.
-      allow update: if ownsModule(id)
-        && changedFields().hasOnly(['total_sessions', 'session_dates'])
-        && request.resource.data.total_sessions == getAfter(/databases/$(database)/documents/modules/$(id)).data.total_sessions
-        && request.resource.data.session_dates == getAfter(/databases/$(database)/documents/modules/$(id)).data.session_dates;
+      allow update: if false; // Aggregates commit only through trusted API.
     }
 
     match /modules/{moduleCode} {
       allow read: if isOwner(resource.data.lecturer_id);
       allow create, delete: if false;
-      allow update: if isOwner(resource.data.lecturer_id)
-        && changedFields().hasOnly(['total_sessions', 'session_dates'])
-        && request.resource.data.total_sessions == getAfter(/databases/$(database)/documents/module_catalog/$(moduleCode)).data.total_sessions
-        && request.resource.data.session_dates == getAfter(/databases/$(database)/documents/module_catalog/$(moduleCode)).data.session_dates;
+      allow update: if false;
     }
 
     match /active_sessions/{sessionId} {
       allow read: if isOwner(resource.data.lecturer_id) && ownsModule(resource.data.module_id);
       allow create: if isOwner(request.resource.data.lecturer_id)
         && ownsModule(request.resource.data.module_id)
+        && request.resource.data.status == 'active'
+        && !request.resource.data.keys().hasAny(['finalization_version', 'completed_at'])
+        && (request.resource.data.get('round_schema', 1) != 2
+          || (request.resource.data.scans_performed == 0
+            && request.resource.data.rounds_started == 0
+            && request.resource.data.active_round_id == null))
         && request.resource.data.get('module_code', request.resource.data.module_id) == request.resource.data.module_id;
       allow update: if ownsSession(sessionId)
+        && activeSession(sessionId)
+        && (resource.data.get('round_schema', 1) != 2 || request.resource.data.status == 'active')
         && !changedFields().hasAny(['lecturer_id', 'module_id', 'module_code', 'module', 'session_id', 'eligible_roster', 'round_schema'])
         && (resource.data.get('round_schema', 1) != 2 || validRoundTransition());
       allow delete: if false;
+
+      match /corrections/{correctionId} {
+        allow read: if ownsSession(sessionId);
+        allow write: if false;
+      }
 
       match /roster/{studentId} {
         allow read: if ownsSession(sessionId) || (isStudent() && request.auth.uid == studentId);
@@ -241,10 +263,15 @@ service cloud.firestore {
       match /attendance/{regNo} {
         allow read: if ownsSession(sessionId) || ownRecord(resource.data);
         allow create: if ownsSession(sessionId) && validStudentInSession(request.resource.data, sessionId)
+          && activeSession(sessionId)
+          && validProvisionalSummary(request.resource.data, sessionId)
           && (request.resource.data.get('round_schema', 1) == 2
             ? request.resource.data.student_uid == regNo
             : request.resource.data.reg_no == regNo);
         allow update: if ownsSession(sessionId) && validStudentInSession(request.resource.data, sessionId)
+          && activeSession(sessionId)
+          && validProvisionalSummary(request.resource.data, sessionId)
+          && !changedFields().hasAny(['finalization_version', 'final_status', 'credited', 'excused', 'marked_late', 'manual', 'corrected_at', 'marked_by'])
           && !changedFields().hasAny(['student_uid', 'student_id', 'reg_no', 'session_id', 'module_id', 'module_code']);
         allow delete: if false;
       }
@@ -254,8 +281,13 @@ service cloud.firestore {
       allow read: if (resource == null && ownsSession(recordId.split('[.]')[0]))
         || ownRecord(resource.data) || ownsSession(resource.data.session_id);
       allow create: if ownsSession(request.resource.data.session_id)
+        && activeSession(request.resource.data.session_id)
+        && validProvisionalSummary(request.resource.data, request.resource.data.session_id)
         && validStudentInSession(request.resource.data, request.resource.data.session_id);
       allow update: if ownsSession(resource.data.session_id)
+        && activeSession(resource.data.session_id)
+        && validProvisionalSummary(request.resource.data, resource.data.session_id)
+        && !changedFields().hasAny(['finalization_version', 'final_status', 'credited', 'excused', 'marked_late', 'manual', 'corrected_at', 'marked_by'])
         && !changedFields().hasAny(['student_uid', 'student_id', 'reg_no', 'session_id', 'module_id', 'module_code']);
       allow delete: if false;
     }
@@ -263,10 +295,12 @@ service cloud.firestore {
     match /absence_records/{recordId} {
       allow read: if ownRecord(resource.data) || ownsSession(resource.data.session_id);
       allow create: if ownsSession(request.resource.data.session_id)
+        && activeSession(request.resource.data.session_id)
         && validStudentInSession(request.resource.data, request.resource.data.session_id);
       allow update: if ownsSession(resource.data.session_id)
+        && activeSession(resource.data.session_id)
         && !changedFields().hasAny(['student_uid', 'student_id', 'session_id', 'module_id', 'module_code']);
-      allow delete: if ownsSession(resource.data.session_id);
+      allow delete: if ownsSession(resource.data.session_id) && activeSession(resource.data.session_id);
     }
 
     match /{document=**} {
