@@ -105,4 +105,24 @@ The student probe checks actual Dart SDK writes with the student login's field s
 
 Firebase documents [demo projects and Auth emulator/custom-token connections](https://firebase.google.com/docs/emulator-suite/connect_auth), [Firestore emulator configuration](https://firebase.google.com/docs/emulator-suite/connect_firestore), and [client rules testing](https://firebase.google.com/docs/rules/unit-tests). The implementation follows those mechanisms with stricter local target guards.
 
-The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions. P04–P13, CI workflows and production deployment require their own authorized phases.
+The npm server `test` command invokes the P02 smoke runner; `qa`'s `test:p03` adds role/profile regressions and `test:p04` adds enrollment/API access regressions. P05–P13, CI workflows and production deployment require their own authorized phases.
+
+## P04 enrollment and access checks
+
+From `qa`, run `npm.cmd run test:p04` with no existing Firebase emulator session. It starts only the fixed demo Auth/Firestore targets and runs P02, P03 and P04 suites serially. The seed publishes `module_catalog` using an explicit safe field whitelist and stores password hashes in client-inaccessible `module_secrets`. Students cannot read raw `modules` or enroll by direct Firestore writes.
+
+The student app enrolls through `POST /api/student/modules/:moduleId/enroll` with its own Firebase ID token and a password-only JSON body. QA fixes the API to the validated emulator host on port 5000. Outside QA, build Android with an explicit HTTPS `--dart-define=API_BASE_URL=https://your-api-host`; no production API URL is guessed. The portal uses its existing `VITE_API_BASE_URL` for trusted module CRUD. Referenced modules cannot be deleted. Lecturer student CRUD remains global, but cannot target lecturer accounts or reset device bindings.
+
+For Android probes, start `npm.cmd run emulators` and `npm.cmd run api` in separate terminals under `qa`. Before the student probe run `node scripts/run.cjs p04-fixture`; before the lecturer probe run `npm.cmd run seed`. The student fixture removes A's QA202 enrollment and adds disabled QA303. Use the existing dedicated QA AVD on port 5580. Run the following from the respective app folder, selecting its target:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+# student_app
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/enrollment_access_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+# lecturer_app
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/session_access_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+# Restore the normal QA app APK after drive; run in each app folder.
+& 'C:/sdk/flutter/bin/flutter.bat' build apk --debug --no-pub -t lib/main.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+```
+
+Each app has one substantive P04 scenario; framework teardown adds another displayed count. Probes call actual services, not the normal UI. Stop the API/Firebase/Android emulator processes afterward. If using USB later, port 5000 also needs `adb reverse` alongside Auth/Firestore. See [P04 report](reports/P04.md) for evidence and limits. No live catalog/secret backfill or deployment has been performed.

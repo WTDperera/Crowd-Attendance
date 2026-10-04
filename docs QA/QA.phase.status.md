@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P03 only — ready for user review
+**Current authorized phase:** P04 only — ready for review
 
-**Last approved phase:** P02
+**Last approved phase:** P03
 
-**Implementation status:** P01/P02 approved; P03 READY_FOR_REVIEW. P04–P13 are not authorized.
+**Implementation status:** P01–P03 approved; P04 READY_FOR_REVIEW. P05–P13 are not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -13,8 +13,8 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 |---|---|---|---|---|
 | P01 — Scope, policy and expected results | APPROVED | 2026-10-02: user explicitly started P01; exact wording below | [P01 report](../qa/reports/P01.md), [decisions](../qa/docs/decisions.md), [matrix](../qa/docs/test-matrix.md) | 2026-10-02: “ok I aprove the phase 1 go to the next” |
 | P02 — Isolated environment and minimum harness | APPROVED | 2026-10-02: “ok I aprove the phase 1 go to the next”; resumed 2026-10-03 for Android only | [P02 report](../qa/reports/P02.md): harness 5/5; student Android 2/2; lecturer Android 2/2; both final QA APKs build; baseline analysis nonzero; student Windows host test deferred by user | 2026-10-04: “I approve P02. Please start P03” |
-| P03 — Role and profile protection | READY_FOR_REVIEW | 2026-10-04: “I approve P02. Please start P03” | [P03 report](../qa/reports/P03.md): escalation reproduced before repair; final local suite 15/15; Android profile probe 1/1 per app; normal QA APKs and QA web build pass | None |
-| P04 — Enrollment and API ownership | NOT_STARTED | None | None | None |
+| P03 — Role and profile protection | APPROVED | 2026-10-04: “I approve P02. Please start P03” | [P03 report](../qa/reports/P03.md): escalation reproduced before repair; final local suite 15/15; Android profile probe 1/1 per app; normal QA APKs and QA web build pass | 2026-10-04: “I approve P03. Please start P04” |
+| P04 — Enrollment and API ownership | READY_FOR_REVIEW | 2026-10-04: “I approve P03. Please start P04” | [P04 report](../qa/reports/P04.md): final combined suite 27/27; actual Android enrollment/session permission scenario 1/1 per app; both normal QA APKs and QA web build pass; baseline analysis limits recorded | None |
 | P05 — Durable multiple scan rounds | NOT_STARTED | None | None | None |
 | P06 — Finalization, recovery and corrections | NOT_STARTED | None | None | None |
 | P07 — Report and workbook correctness | NOT_STARTED | None | None | None |
@@ -34,6 +34,8 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-04 — “I approve P03. Please start P04” approves P03 and starts P04 only. Android scope/Windows deferral persist. P05 requires its own approval/start instruction.
 
 2026-10-04 — “I approve P02. Please start P03” approves P02 and explicitly starts P03 only. P02's Android-only verification and Windows deferral remain the reviewed scope. P04 requires a separate approval/start instruction.
 
@@ -130,6 +132,18 @@ Real-user testing remains deferred. Physical hardware availability is unconfirme
 - Admin provisioning is the only profile-creation path; students cannot promote themselves. Protected identity/role/binding/enrollment fields cannot be edited by ordinary clients; valid first binding and server login timestamps pass. Lecturer presentation edits and existing mobile attendance-count field updates remain allowed.
 - Limits: role registry origin must be audited before any future live deployment; current live profiles were not inspected/migrated. Direct enrollment and broad counter ownership/integrity remain P04–P06 work. Device build ID is not proof of unique hardware; reset workflow/physical BLE/UI journeys remain deferred. No new production operations, dependencies or global toolchain configuration.
 - Evidence and exact manual verification/Git commands: [P03 report](../qa/reports/P03.md). No staging/commit/push. P03 is READY_FOR_REVIEW, not approved; P04 has not started.
+
+## P04 handoff — 2026-10-04
+
+- Authorization: “I approve P03. Please start P04”; P03 approved, P04 only started.
+- Baseline: clean worktree/index, MAIN, HEAD `27274d00b7b1e88ba92047b852b74f0fb849b9cb` (`test(qa): complete P03 role and profile protection`), origin unchanged.
+- Before repair: eight focused access scenarios failed; second lecturer export returned 200, direct enrollment-count mutation succeeded, required student queries failed, trusted enrollment was missing, and the student API could mutate a lecturer Auth identity/create a false student profile.
+- Changes: trusted transactional password enrollment, secret-free student catalog and server-only hashes, owner report/export guards and module management, actual client query/write permissions, approved global student CRUD with access removal/retry and archived identity. Round/finalization/report calculations remain later gates.
+- Final evidence: combined P02/P03/P04 suite 27/27, zero skipped (32.17 s test duration). Android student/lecturer each 1/1 substantive service scenario. Both normal-entry QA APK builds and QA web build pass. Student changed-source/probe analysis and portal targeted lint clean; lecturer analysis reports five existing print infos, no new probe findings. Full baseline lint/analysis not rerun.
+- Limits: non-QA Android requires explicit HTTPS API_BASE_URL; live catalog/secret backfill remains unperformed; deletion failure/race coverage is bounded, registration byte/format/reset policy unresolved. No physical BLE, normal UI/browser journey, Windows desktop, deployment or full security/attendance-correctness claim.
+- All local QA sessions stopped; final adb list empty and QA ports have no listeners. Index empty; no Git mutations, dependencies or production changes.
+- Evidence, exact commands and optional manual Git list: [P04 report](../qa/reports/P04.md), [README](../qa/README.md).
+- Technical gate READY_FOR_REVIEW, not approved. P05 remains NOT_STARTED and requires explicit P04 approval and P05 start.
 
 ## Handoff record template
 

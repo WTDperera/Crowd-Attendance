@@ -1,16 +1,24 @@
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
   query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
   where,
 } from 'firebase/firestore'
-import { db } from '../firebase/firebase'
+import { auth, db } from '../firebase/firebase'
+import axios from 'axios'
+
+const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000' })
+const request = async (method, path, data) => {
+  if (!auth.currentUser) throw new Error('You must be logged in to manage modules.')
+  const token = await auth.currentUser.getIdToken()
+  try {
+    return (await api.request({ method, url: path, data, headers: { Authorization: `Bearer ${token}` } })).data
+  } catch (error) {
+    throw new Error(error.response?.data?.message || 'Unable to manage this module right now.')
+  }
+}
 
 const modulesCollection = collection(db, 'modules')
 
@@ -77,86 +85,38 @@ export const createModule = async ({
     throw new Error('Enrollment password is required.')
   }
 
-  await setDoc(
-    doc(db, 'modules', trimmedCode),
-    {
-      code: trimmedCode,
-      name: name.trim(),
-      lecturer_id: lecturer_id.trim(),
-      total_sessions: 0,
-      session_dates: [],
-      enrollment_enabled: Boolean(enrollment_enabled),
-      enrollment_password_hash,
-      enrollment_password_updated_at: serverTimestamp(),
-    },
-    { merge: false }
-  )
+  await request('POST', '/api/modules', {
+    code: trimmedCode, name: name.trim(), lecturer_id: lecturer_id.trim(),
+    enrollment_enabled: Boolean(enrollment_enabled), enrollment_password_hash,
+  })
 }
 
 export const updateModule = async (code, patch, requesterId) => {
-  const trimmedCode = code.trim().toUpperCase()
-  if (!trimmedCode) {
-    throw new Error('Module code is required.')
-  }
-
-  const existing = await getDoc(doc(db, 'modules', trimmedCode))
-  if (!existing.exists()) {
-    throw new Error('Module not found.')
-  }
-  if (!requesterId || existing.data()?.lecturer_id !== requesterId) {
+  if (!requesterId || auth.currentUser?.uid !== requesterId) {
     throw new Error('You do not have permission to edit this module.')
   }
-
   const nextPatch = {
     name: patch.name.trim(),
     lecturer_id: patch.lecturer_id.trim(),
-    enrollment_enabled:
-      typeof patch.enrollment_enabled === 'boolean'
-        ? patch.enrollment_enabled
-        : true,
+    enrollment_enabled: typeof patch.enrollment_enabled === 'boolean' ? patch.enrollment_enabled : true,
   }
-
-  if (patch.enrollment_password_hash) {
-    nextPatch.enrollment_password_hash = patch.enrollment_password_hash
-    nextPatch.enrollment_password_updated_at = serverTimestamp()
-  }
-
-  await updateDoc(doc(db, 'modules', trimmedCode), nextPatch)
+  if (patch.enrollment_password_hash) nextPatch.enrollment_password_hash = patch.enrollment_password_hash
+  await request('PATCH', `/api/modules/${encodeURIComponent(code.trim().toUpperCase())}`, nextPatch)
 }
 
 export const deleteModule = async (code, requesterId) => {
-  const trimmedCode = code.trim().toUpperCase()
-  if (!trimmedCode) {
-    throw new Error('Module code is required.')
-  }
-
-  const existing = await getDoc(doc(db, 'modules', trimmedCode))
-  if (!existing.exists()) {
-    throw new Error('Module not found.')
-  }
-  if (!requesterId || existing.data()?.lecturer_id !== requesterId) {
+  if (!requesterId || auth.currentUser?.uid !== requesterId) {
     throw new Error('You do not have permission to delete this module.')
   }
-
-  await deleteDoc(doc(db, 'modules', trimmedCode))
+  await request('DELETE', `/api/modules/${encodeURIComponent(code.trim().toUpperCase())}`)
 }
 
 export const getModuleById = async (moduleId, requesterId) => {
   const trimmedCode = moduleId.trim().toUpperCase()
-  if (!trimmedCode) {
-    throw new Error('Module code is required.')
-  }
-
+  if (!trimmedCode) throw new Error('Module code is required.')
   const snapshot = await getDoc(doc(db, 'modules', trimmedCode))
-  if (!snapshot.exists()) {
-    return null
-  }
-
+  if (!snapshot.exists()) return null
   const moduleData = mapModuleDoc(snapshot)
-
-  if (!requesterId || moduleData.lecturer_id !== requesterId) {
-    return null
-  }
-
+  if (!requesterId || moduleData.lecturer_id !== requesterId) return null
   return moduleData
 }

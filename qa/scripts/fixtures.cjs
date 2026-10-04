@@ -30,10 +30,14 @@ async function seed() {
   const end = admin.firestore.Timestamp.fromDate(new Date('2026-10-02T04:30:00Z'));
   const hash = createHash('sha256').update(identities.enrollmentPassword).digest('hex');
   const batch = db.batch();
+  const { catalogData } = require('../../web_app/admin-portal/server/services/enrollmentService');
   for (const [i, code] of ['QA101', 'QA202'].entries()) {
-    batch.set(db.doc(`modules/${code}`), { code, module_id: code, name: `QA Module ${code}`,
-      lecturer_id: identities.lecturers[i].uid, enrollment_enabled: true, enrollment_password_hash: hash,
-      enrolled_count: 3, total_sessions: i === 0 ? 1 : 0, session_dates: i === 0 ? [start] : [] });
+    const data = { code, module_id: code, name: `QA Module ${code}`,
+      lecturer_id: identities.lecturers[i].uid, enrollment_enabled: true,
+      enrolled_count: 3, total_sessions: i === 0 ? 1 : 0, session_dates: i === 0 ? [start] : [] };
+    batch.set(db.doc(`modules/${code}`), data);
+    batch.set(db.doc(`module_catalog/${code}`), catalogData(code, data));
+    batch.set(db.doc(`module_secrets/${code}`), { enrollment_password_hash: hash });
   }
   for (const student of identities.students) {
     batch.set(db.doc(`students/${student.uid}`), { ...student, enrolled_module_ids: ['QA101', 'QA202'],

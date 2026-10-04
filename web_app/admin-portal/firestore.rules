@@ -1,6 +1,7 @@
 rules_version = '2';
 
-// P03 protects roles/profiles. Enrollment and attendance are later gates.
+// P03/P04 protect roles, profiles, enrollment and resource permissions.
+// Round/finalization correctness remains a separate gate.
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() { return request.auth != null; }
@@ -13,6 +14,51 @@ service cloud.firestore {
 
     function isOwner(lecturerId) {
       return isLecturer() && request.auth.uid == lecturerId;
+    }
+
+    function isStudent() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/students/$(request.auth.uid))
+        && get(/databases/$(database)/documents/students/$(request.auth.uid)).data.get('lifecycle_status', 'active') == 'active'
+        && !isLecturer();
+    }
+
+    function ownsModule(id) {
+      return isOwner(get(/databases/$(database)/documents/modules/$(id)).data.lecturer_id);
+    }
+
+    function ownsSession(id) {
+      let session = get(/databases/$(database)/documents/active_sessions/$(id)).data;
+      return isOwner(session.lecturer_id) && ownsModule(session.module_id);
+    }
+
+    function ownRecord(data) {
+      return isStudent() && (data.get('student_uid', '') == request.auth.uid
+        || data.get('student_id', '') == request.auth.uid);
+    }
+
+    function validStudentInSession(data, sessionId) {
+      let session = get(/databases/$(database)/documents/active_sessions/$(sessionId)).data;
+      let uid = data.get('student_uid', data.get('student_id', ''));
+      let student = get(/databases/$(database)/documents/students/$(uid)).data;
+      return uid is string && uid != ''
+        && data.get('student_id', uid) == uid
+        && student.get('lifecycle_status', 'active') == 'active'
+        && session.module_id in student.get('enrolled_module_ids', [])
+        && data.get('module_id', session.module_id) == session.module_id
+        && data.get('module_code', session.module_id) == session.module_id
+        && data.get('reg_no', student.reg_no) == student.reg_no;
+    }
+
+    function validCounterUpdate() {
+      let next = request.resource.data.attendance_counts;
+      let previous = resource.data.get('attendance_counts', {});
+      let keys = next.diff(previous).affectedKeys();
+      let id = request.resource.data.get('attendance_module_id', '');
+      return next is map && ((keys.size() == 0 && !changedFields().hasAny(['attendance_module_id']))
+        || (id is string && id != '' && ownsModule(id)
+          && id in resource.data.get('enrolled_module_ids', [])
+          && keys.hasOnly([id]) && next[id] is int && next[id] >= 0));
     }
 
     function changedFields() {
@@ -58,37 +104,80 @@ service cloud.firestore {
     }
 
     match /students/{uid} {
-      // Global CRUD uses the trusted API. Mobile attendance counter ownership
-      // and round semantics remain for P04–P06, not a P03 correctness claim.
-      allow read: if isSignedIn() && (request.auth.uid == uid || isLecturer());
+      // Global CRUD uses the trusted API. Counter writes require module owner
+      // context and enrollment; round/idempotency semantics remain for P05/06.
+      allow read: if (isStudent() && request.auth.uid == uid) || isLecturer();
       allow create, delete: if false;
-      allow update: if (isSignedIn() && request.auth.uid == uid
+      allow update: if (isStudent() && request.auth.uid == uid
           && changedFields().hasOnly(['device_id', 'device_locked_at', 'last_login'])
           && validBinding() && validLoginTime())
-        || (isLecturer() && changedFields().hasOnly(['attendance_counts'])
-          && request.resource.data.attendance_counts is map);
+        || (isLecturer() && changedFields().hasOnly(['attendance_counts', 'attendance_module_id'])
+          && validCounterUpdate());
+
+      match /enrollments/{moduleId} {
+        allow read: if exists(/databases/$(database)/documents/students/$(uid))
+          && ((isStudent() && request.auth.uid == uid) || ownsModule(moduleId));
+        allow write: if false;
+      }
+    }
+
+    match /module_secrets/{id} { allow read, write: if false; }
+
+    match /module_catalog/{id} {
+      allow read: if isStudent() || isLecturer();
+      allow create, delete: if false;
+      // Only mirrored aggregate fields are writable by the owning mobile
+      // lecturer; all metadata/secret changes use trusted management routes.
+      allow update: if ownsModule(id)
+        && changedFields().hasOnly(['total_sessions', 'session_dates'])
+        && request.resource.data.total_sessions == getAfter(/databases/$(database)/documents/modules/$(id)).data.total_sessions
+        && request.resource.data.session_dates == getAfter(/databases/$(database)/documents/modules/$(id)).data.session_dates;
     }
 
     match /modules/{moduleCode} {
       allow read: if isOwner(resource.data.lecturer_id);
-      allow create: if isLecturer() && request.resource.data.lecturer_id == request.auth.uid;
+      allow create, delete: if false;
       allow update: if isOwner(resource.data.lecturer_id)
-        && request.resource.data.lecturer_id == resource.data.lecturer_id;
-      allow delete: if isOwner(resource.data.lecturer_id);
+        && changedFields().hasOnly(['total_sessions', 'session_dates'])
+        && request.resource.data.total_sessions == getAfter(/databases/$(database)/documents/module_catalog/$(moduleCode)).data.total_sessions
+        && request.resource.data.session_dates == getAfter(/databases/$(database)/documents/module_catalog/$(moduleCode)).data.session_dates;
     }
 
     match /active_sessions/{sessionId} {
-      allow read: if isOwner(resource.data.lecturer_id);
-      allow create: if isLecturer() && request.resource.data.lecturer_id == request.auth.uid;
-      allow update: if isOwner(resource.data.lecturer_id)
-        && request.resource.data.lecturer_id == resource.data.lecturer_id;
-      allow delete: if isOwner(resource.data.lecturer_id);
+      allow read: if isOwner(resource.data.lecturer_id) && ownsModule(resource.data.module_id);
+      allow create: if isOwner(request.resource.data.lecturer_id)
+        && ownsModule(request.resource.data.module_id)
+        && request.resource.data.get('module_code', request.resource.data.module_id) == request.resource.data.module_id;
+      allow update: if ownsSession(sessionId)
+        && !changedFields().hasAny(['lecturer_id', 'module_id', 'module_code', 'module', 'session_id']);
+      allow delete: if false;
+
+      match /attendance/{regNo} {
+        allow read: if ownsSession(sessionId) || ownRecord(resource.data);
+        allow create: if ownsSession(sessionId) && validStudentInSession(request.resource.data, sessionId)
+          && request.resource.data.reg_no == regNo;
+        allow update: if ownsSession(sessionId) && validStudentInSession(request.resource.data, sessionId)
+          && !changedFields().hasAny(['student_uid', 'student_id', 'reg_no', 'session_id', 'module_id', 'module_code']);
+        allow delete: if false;
+      }
     }
 
     match /attendance_records/{recordId} {
-      allow read: if isOwner(get(/databases/$(database)/documents/active_sessions/$(resource.data.session_id)).data.lecturer_id);
-      allow create: if isOwner(get(/databases/$(database)/documents/active_sessions/$(request.resource.data.session_id)).data.lecturer_id);
-      allow update, delete: if false;
+      allow read: if ownRecord(resource.data) || ownsSession(resource.data.session_id);
+      allow create: if ownsSession(request.resource.data.session_id)
+        && validStudentInSession(request.resource.data, request.resource.data.session_id);
+      allow update: if ownsSession(resource.data.session_id)
+        && !changedFields().hasAny(['student_uid', 'student_id', 'reg_no', 'session_id', 'module_id', 'module_code']);
+      allow delete: if false;
+    }
+
+    match /absence_records/{recordId} {
+      allow read: if ownRecord(resource.data) || ownsSession(resource.data.session_id);
+      allow create: if ownsSession(request.resource.data.session_id)
+        && validStudentInSession(request.resource.data, request.resource.data.session_id);
+      allow update: if ownsSession(resource.data.session_id)
+        && !changedFields().hasAny(['student_uid', 'student_id', 'session_id', 'module_id', 'module_code']);
+      allow delete: if ownsSession(resource.data.session_id);
     }
 
     match /{document=**} {

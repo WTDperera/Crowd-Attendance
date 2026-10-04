@@ -140,7 +140,7 @@ class SessionService {
           'date': dateString,
           'rssi': rssi,
         }, SetOptions(merge: true));
-        
+
         batch.update(existingRecords.docs.first.reference, {
           'scan_count': FieldValue.increment(1),
           'marked_at': FieldValue.serverTimestamp(),
@@ -216,9 +216,8 @@ class SessionService {
       // Firestore counter: increment student's attendance count for this module.
       // Uses merge so it won't overwrite other modules' counters.
       batch.set(studentRef, {
-        'attendance_counts': {
-          moduleKey: FieldValue.increment(1)
-        }
+        'attendance_module_id': moduleKey,
+        'attendance_counts': {moduleKey: FieldValue.increment(1)},
       }, SetOptions(merge: true));
 
       await batch.commit();
@@ -230,10 +229,7 @@ class SessionService {
   /// Increment the scans performed count for a session
   Future<void> incrementScanRound(String sessionId) async {
     try {
-      await _firestore
-          .collection('active_sessions')
-          .doc(sessionId)
-          .update({
+      await _firestore.collection('active_sessions').doc(sessionId).update({
         'scans_performed': FieldValue.increment(1),
       });
     } catch (e) {
@@ -262,35 +258,46 @@ class SessionService {
 
         final batch = _firestore.batch();
         List<String> leftEarlyStudentIds = [];
-        
+
         for (var doc in recordsSnap.docs) {
-          int scanCount = doc.data().containsKey('scan_count') ? doc.get('scan_count') : 1;
-          String finalStatus = scanCount >= scansPerformed ? 'present' : 'left_early';
+          int scanCount = doc.data().containsKey('scan_count')
+              ? doc.get('scan_count')
+              : 1;
+          String finalStatus = scanCount >= scansPerformed
+              ? 'present'
+              : 'left_early';
           batch.update(doc.reference, {'status': finalStatus});
-          
+
           String regNo = doc.get('reg_no');
-          batch.update(sessionRef.collection('attendance').doc(regNo), {'status': finalStatus});
+          batch.update(sessionRef.collection('attendance').doc(regNo), {
+            'status': finalStatus,
+          });
 
           if (finalStatus == 'left_early') {
             String studentId = doc.get('student_id');
             leftEarlyStudentIds.add(studentId);
             String moduleKey = doc.get('module_code');
             batch.update(_firestore.collection('students').doc(studentId), {
-               'attendance_counts.$moduleKey': FieldValue.increment(-1),
+              'attendance_module_id': moduleKey,
+              'attendance_counts.$moduleKey': FieldValue.increment(-1),
             });
           }
         }
-        
+
         if (leftEarlyStudentIds.isNotEmpty) {
           // Clamp student_count to minimum 0 — avoid going negative.
-          final currentCount = (sessionData['student_count'] as num?)?.toInt() ?? 0;
-          final newCount = (currentCount - leftEarlyStudentIds.length).clamp(0, currentCount);
+          final currentCount =
+              (sessionData['student_count'] as num?)?.toInt() ?? 0;
+          final newCount = (currentCount - leftEarlyStudentIds.length).clamp(
+            0,
+            currentCount,
+          );
           batch.update(sessionRef, {
             'students_present': FieldValue.arrayRemove(leftEarlyStudentIds),
             'student_count': newCount,
           });
         }
-        
+
         await batch.commit();
       }
 
@@ -346,6 +353,13 @@ class SessionService {
           'total_sessions': FieldValue.increment(1),
           'session_dates': FieldValue.arrayUnion([now]),
         });
+        transaction.update(
+          _firestore.collection('module_catalog').doc(moduleKeyLocal),
+          {
+            'total_sessions': FieldValue.increment(1),
+            'session_dates': FieldValue.arrayUnion([now]),
+          },
+        );
       });
 
       if (moduleKeyOut != null &&
@@ -420,7 +434,7 @@ class SessionService {
       if (status != 'present') {
         continue;
       }
-      
+
       final uid = (data['student_uid'] as String?)?.trim();
       if (uid != null && uid.isNotEmpty) {
         presentUids.add(uid);
@@ -550,8 +564,14 @@ class SessionService {
         );
         final batch = _firestore.batch();
         for (final uid in chunk) {
-          final docId = '${sessionId}_$uid';
-          batch.delete(_firestore.collection('absence_records').doc(docId));
+          final existing = await _firestore
+              .collection('absence_records')
+              .where('session_id', isEqualTo: sessionId)
+              .where('student_uid', isEqualTo: uid)
+              .get();
+          for (final record in existing.docs) {
+            batch.delete(record.reference);
+          }
         }
         await batch.commit();
       }

@@ -8,6 +8,7 @@
     "emulators": "node scripts/run.cjs emulators",
     "smoke": "node scripts/run.cjs smoke",
     "test:p03": "node scripts/run.cjs security",
+    "test:p04": "node scripts/run.cjs access",
     "seed": "node scripts/run.cjs seed",
     "reset": "node scripts/run.cjs reset",
     "api": "node scripts/run.cjs api",

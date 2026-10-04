@@ -8,7 +8,8 @@ const { seed } = require('./fixtures.cjs');
   await seed(); // Repeated setup must produce the same synthetic identities/records.
   const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1',
     'tests/config.test.cjs', 'tests/emulator.test.cjs',
-    ...(process.argv[2] === 'security' ? ['tests/profile-security.test.cjs'] : [])],
+    ...(['security', 'access'].includes(process.argv[2]) ? ['tests/profile-security.test.cjs'] : []),
+    ...(process.argv[2] === 'access' ? ['tests/enrollment-access.test.cjs'] : [])],
     { stdio: 'inherit', env: process.env, windowsHide: true });
   await require('../../web_app/admin-portal/server/firebaseAdmin').admin.app().delete();
   process.exitCode = result.status ?? 1;

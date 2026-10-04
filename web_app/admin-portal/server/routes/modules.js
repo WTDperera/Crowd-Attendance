@@ -2,6 +2,7 @@ const express = require('express');
 const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 const { requireLecturer } = verifyFirebaseToken;
 const { db } = require('../firebaseAdmin');
+const { requireModuleOwner } = require('../services/moduleAccess');
 
 const router = express.Router();
 const ENROLL_FIELD = 'enrolled_module_ids';
@@ -89,7 +90,7 @@ const fetchStudentRecords = async (collectionName, moduleId, uid, studentFields,
 router.get('/modules', verifyFirebaseToken,
   requireLecturer, async (req, res) => {
   try {
-    const snapshot = await db.collection('modules').get();
+    const snapshot = await db.collection('modules').where('lecturer_id', '==', req.user.uid).get();
     const modules = snapshot.docs.map((doc) => normalizeModule(doc));
 
     return res.json({ modules });
@@ -104,6 +105,7 @@ router.get(
   '/modules/:moduleId/attendance-summary',
   verifyFirebaseToken,
   requireLecturer,
+  requireModuleOwner(req => req.params.moduleId),
   async (req, res) => {
     const { moduleId } = req.params;
 
@@ -179,6 +181,7 @@ router.get(
   '/modules/:moduleId/students/:uid/attendance-details',
   verifyFirebaseToken,
   requireLecturer,
+  requireModuleOwner(req => req.params.moduleId),
   async (req, res) => {
     const { moduleId, uid } = req.params;
 

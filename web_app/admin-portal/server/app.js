@@ -13,7 +13,9 @@ function createApp() {
   app.use(express.json());
   app.use('/api/auth', require('./routes/authRoutes'));
   app.use('/api', require('./routes/students'));
+  app.use('/api', require('./routes/enrollment'));
   app.use('/api', require('./routes/modules'));
+  app.use('/api', require('./routes/moduleManagement'));
   app.use('/api/attendance', require('./routes/attendanceRoutes'));
   return app;
 }

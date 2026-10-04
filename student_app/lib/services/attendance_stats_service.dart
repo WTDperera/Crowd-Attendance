@@ -313,7 +313,7 @@ class AttendanceStatsService {
       // 1) Fetch module info.
       final moduleKey = moduleId.trim().toUpperCase();
       final moduleSnap = await _firestore
-          .collection('modules')
+          .collection('module_catalog')
           .doc(moduleKey)
           .get();
       if (!moduleSnap.exists) {
@@ -437,7 +437,7 @@ class AttendanceStatsService {
 
     // Load module totals + master schedule.
     final moduleSnap = await _firestore
-        .collection('modules')
+        .collection('module_catalog')
         .doc(moduleUpper)
         .get();
     final moduleData = moduleSnap.data();

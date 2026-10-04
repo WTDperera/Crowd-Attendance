@@ -9,7 +9,6 @@ class Module {
     required this.totalSessions,
     required this.sessionDates,
     required this.enrollmentEnabled,
-    required this.enrollmentPasswordHash,
   });
 
   final String id;
@@ -19,7 +18,6 @@ class Module {
   final int totalSessions;
   final List<DateTime> sessionDates;
   final bool enrollmentEnabled;
-  final String enrollmentPasswordHash;
 
   static int _asInt(dynamic value) {
     if (value == null) return 0;
@@ -60,9 +58,6 @@ class Module {
       totalSessions: _asInt(map['total_sessions'] ?? map['totalSessions']),
       sessionDates: sessionDates,
       enrollmentEnabled: map['enrollment_enabled'] == true,
-      enrollmentPasswordHash:
-          (map['enrollment_password_hash'] as String?)?.trim().toLowerCase() ??
-          '',
     );
   }
 }

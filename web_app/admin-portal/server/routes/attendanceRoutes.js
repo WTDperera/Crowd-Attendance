@@ -2,6 +2,8 @@ const express = require('express');
 const verifyFirebaseToken = require('../middleware/verifyFirebaseToken');
 const { requireLecturer } = verifyFirebaseToken;
 const { admin, db } = require('../firebaseAdmin');
+const { requireModuleOwner, requireSessionOwner } = require('../services/moduleAccess');
+const { historicalStudentsForModule } = require('../services/studentManagement');
 
 const router = express.Router();
 
@@ -77,7 +79,7 @@ router.get('/test', (req, res) => {
 });
 
 // GET /api/attendance/sessions?moduleId=... - Fetch sessions for a module owned by caller
-router.get('/sessions', verifyFirebaseToken, requireLecturer, async (req, res) => {
+router.get('/sessions', verifyFirebaseToken, requireLecturer, requireModuleOwner(req => req.query.moduleId), async (req, res) => {
   const { moduleId } = req.query;
 
   if (!moduleId) {
@@ -122,7 +124,7 @@ router.get('/sessions', verifyFirebaseToken, requireLecturer, async (req, res) =
 });
 
 // GET /api/attendance/session/:sessionId/report - Per-session report data
-router.get('/session/:sessionId/report', verifyFirebaseToken, requireLecturer, async (req, res) => {
+router.get('/session/:sessionId/report', verifyFirebaseToken, requireLecturer, requireSessionOwner, async (req, res) => {
   const { sessionId } = req.params;
 
   try {
@@ -149,10 +151,7 @@ router.get('/session/:sessionId/report', verifyFirebaseToken, requireLecturer, a
       : { id: moduleId, module_id: moduleId, module_code: moduleId, module_name: moduleId };
 
     // Fetch enrolled students
-    const studentSnapshot = await db
-      .collection('students')
-      .where(ENROLL_FIELD, 'array-contains', moduleId)
-      .get();
+    const studentSnapshot = await historicalStudentsForModule(moduleId);
 
     const students = studentSnapshot.docs
       .map((doc) => ({
@@ -270,7 +269,7 @@ router.get('/session/:sessionId/report', verifyFirebaseToken, requireLecturer, a
 });
 
 // POST /api/attendance/session/:sessionId/mark - Manually mark student attendance
-router.post('/session/:sessionId/mark', verifyFirebaseToken, requireLecturer, async (req, res) => {
+router.post('/session/:sessionId/mark', verifyFirebaseToken, requireLecturer, requireSessionOwner, async (req, res) => {
   const { sessionId } = req.params;
   const { student_uid, status } = req.body;
 
@@ -744,7 +743,7 @@ router.get('/dashboard-summary', verifyFirebaseToken, requireLecturer, async (re
 });
 
 // GET /api/attendance/module/:moduleId/summary - Module attendance summary computed from completed sessions
-router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, async (req, res) => {
+router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, requireModuleOwner(req => req.params.moduleId), async (req, res) => {
   const { moduleId } = req.params;
 
   try {
@@ -811,7 +810,7 @@ router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, as
     // 2. Fetch all enrolled students
     const studentSnapshots = await Promise.all(
       moduleKeys.map((key) =>
-        db.collection('students').where(ENROLL_FIELD, 'array-contains', key).get()
+        historicalStudentsForModule(key)
       )
     );
 
@@ -903,7 +902,7 @@ router.get('/module/:moduleId/summary', verifyFirebaseToken, requireLecturer, as
 });
 
 // GET /api/attendance/export - Overall module export matrix (Fixed bulk fetch, no N+1 loop)
-router.get('/export', verifyFirebaseToken, requireLecturer, async (req, res) => {
+router.get('/export', verifyFirebaseToken, requireLecturer, requireModuleOwner(req => req.query.moduleId), async (req, res) => {
   const { moduleId, startDate, endDate } = req.query;
 
   try {
@@ -1001,10 +1000,7 @@ router.get('/export', verifyFirebaseToken, requireLecturer, async (req, res) => 
     });
 
     // 2. Fetch all enrolled students
-    const studentSnapshot = await db
-      .collection('students')
-      .where(ENROLL_FIELD, 'array-contains', normalizedModuleId)
-      .get();
+    const studentSnapshot = await historicalStudentsForModule(normalizedModuleId);
 
     const students = studentSnapshot.docs
       .map((doc) => ({
@@ -1098,4 +1094,4 @@ router.get('/export', verifyFirebaseToken, requireLecturer, async (req, res) => 
   }
 });
 
-module.exports = router;
+module.exports = router;
