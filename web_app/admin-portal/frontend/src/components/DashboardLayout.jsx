@@ -21,11 +21,7 @@ function DashboardLayout() {
   const currentTitle =
     pageTitles[location.pathname] ||
     (location.pathname.startsWith('/modules/')
-      ? location.pathname.includes('/sessions/')
-        ? location.pathname.endsWith('/new')
-          ? 'Add Session'
-          : 'Edit Session'
-        : location.pathname.endsWith('/edit')
+      ? location.pathname.endsWith('/edit')
         ? 'Edit Module'
         : 'Module Details'
       : location.pathname.startsWith('/students/')

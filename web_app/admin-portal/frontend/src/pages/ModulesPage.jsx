@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ModuleCard from '../components/ModuleCard.jsx'
 import ModuleFormModal from '../components/ModuleFormModal.jsx'
+import useSubmission from '../hooks/useSubmission'
 import { useAuth } from '../context/AuthContext.jsx'
 import {
   createModule,
@@ -11,6 +12,7 @@ import {
 } from '../services/moduleService'
 
 function ModulesPage() {
+  const mutation = useSubmission()
   const navigate = useNavigate()
   const { user, lecturerName } = useAuth()
   const lecturerId = user?.uid || ''
@@ -78,18 +80,22 @@ function ModulesPage() {
       return
     }
 
+    if (!mutation.begin()) return
     setIsSaving(true)
     setErrorMessage('')
 
     try {
       await createModule({ ...payload, lecturer_id: lecturerId })
+      if (!mutation.isMounted()) return
       window.alert('Module created successfully.')
       closeModal()
     } catch (error) {
+      if (!mutation.isMounted()) return
       setErrorMessage(error.message)
       window.alert(error.message)
     } finally {
-      setIsSaving(false)
+      if (mutation.isMounted()) setIsSaving(false)
+      mutation.end()
     }
   }
 
@@ -98,22 +104,27 @@ function ModulesPage() {
       return
     }
 
+    if (!mutation.begin()) return
     setIsSaving(true)
     setErrorMessage('')
 
     try {
       await updateModule(selectedModule.code || selectedModule.id, payload, lecturerId)
+      if (!mutation.isMounted()) return
       window.alert('Module updated successfully.')
       closeModal()
     } catch (error) {
+      if (!mutation.isMounted()) return
       setErrorMessage(error.message)
       window.alert(error.message)
     } finally {
-      setIsSaving(false)
+      if (mutation.isMounted()) setIsSaving(false)
+      mutation.end()
     }
   }
 
   const handleDelete = async (module) => {
+    if (mutation.busy) return
     const code = (module.code || module.id || '').trim().toUpperCase()
     if (!code) {
       window.alert('Module code is missing.')
@@ -133,14 +144,19 @@ function ModulesPage() {
       return
     }
 
+    if (!mutation.begin()) return
     setErrorMessage('')
 
     try {
       await deleteModule(code, lecturerId)
+      if (!mutation.isMounted()) return
       window.alert('Module deleted successfully.')
     } catch (error) {
+      if (!mutation.isMounted()) return
       setErrorMessage(error.message)
       window.alert(error.message)
+    } finally {
+      mutation.end()
     }
   }
 
@@ -160,7 +176,7 @@ function ModulesPage() {
             Manage modules in Firestore. Attendance records are preserved on delete.
           </span>
         </div>
-        <button className="primary-button" type="button" onClick={openCreateModal}>
+        <button className="primary-button" type="button" onClick={openCreateModal} disabled={mutation.busy}>
           Add Module
         </button>
       </div>
@@ -187,6 +203,7 @@ function ModulesPage() {
             onOpen={openDetails}
             onEdit={openEditModal}
             onDelete={handleDelete}
+            disabled={mutation.busy}
           />
         ))}
         {!isLoading && filteredModules.length === 0 && (

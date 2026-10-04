@@ -4,7 +4,8 @@ function ModuleCard({
   module,  
   onOpen, 
   onEdit, 
-  onDelete 
+  onDelete,
+  disabled = false
 }) 
 
 {
@@ -62,13 +63,14 @@ const lecturerName = module.lecturer_name || ownerName
       </div>
 
       <div className="card-actions">
-        <button className="ghost-button" type="button" onClick={handleEdit}>
+        <button className="ghost-button" type="button" onClick={handleEdit} disabled={disabled}>
           Edit
         </button>
         <button
           className="ghost-button danger"
           type="button"
           onClick={handleDelete}
+          disabled={disabled}
         >
           Delete
         </button>

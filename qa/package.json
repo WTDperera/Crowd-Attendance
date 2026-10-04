@@ -12,6 +12,7 @@
     "test:p05": "node scripts/run.cjs rounds",
     "test:p06": "node scripts/run.cjs finalization",
     "test:p07": "node scripts/run.cjs reports",
+    "test:p08": "node scripts/run.cjs components",
     "seed": "node scripts/run.cjs seed",
     "reset": "node scripts/run.cjs reset",
     "api": "node scripts/run.cjs api",

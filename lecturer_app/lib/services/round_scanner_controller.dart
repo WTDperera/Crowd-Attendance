@@ -15,16 +15,24 @@ class RoundScannerController {
   Map<String, String>? _roster;
   String? currentRound;
   bool _changing = false;
+  bool _disposed = false;
+
+  void dispose() {
+    _disposed = true;
+    gate.pause(); // Leaving a screen must never complete a durable round.
+  }
 
   Future<void> start() async {
-    if (_changing || gate.accepting) return;
+    if (_disposed || _changing || gate.accepting) return;
     _changing = true;
     try {
       // Failed/unavailable roster never permits detection. Retry loads server.
       _roster ??= await loadRoster();
+      if (_disposed) return;
       final id = await begin();
-      gate.resume(id, _roster!);
       currentRound = id;
+      if (_disposed) return;
+      gate.resume(id, _roster!);
     } finally {
       _changing = false;
     }

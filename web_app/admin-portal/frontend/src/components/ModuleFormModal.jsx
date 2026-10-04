@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { sha256 } from '../utils/hash'
+import useSubmission from '../hooks/useSubmission'
 
 const buildInitialState = (initialValues) => ({
   code: initialValues?.code || '',
@@ -12,8 +13,7 @@ const buildInitialState = (initialValues) => ({
   confirm_password: '',
 })
 
-function ModuleFormModal({
-  isOpen,
+function ModuleForm({
   mode,
   initialValues,
   lecturerId,
@@ -22,18 +22,10 @@ function ModuleFormModal({
   onSubmit,
   isSubmitting = false,
 }) {
+  const submission = useSubmission()
   const isEdit = mode === 'edit'
   const [formData, setFormData] = useState(buildInitialState(initialValues))
   const [errors, setErrors] = useState({})
-
-  useEffect(() => {
-    if (!isOpen) {
-      return
-    }
-
-    setFormData(buildInitialState(initialValues))
-    setErrors({})
-  }, [initialValues, isOpen])
 
   const normalizeCode = (value) => value.trim().toUpperCase()
 
@@ -108,6 +100,7 @@ function ModuleFormModal({
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (isSubmitting || submission.busy) return
     const nextErrors = validate()
     setErrors(nextErrors)
 
@@ -115,23 +108,26 @@ function ModuleFormModal({
       return
     }
 
-    const payload = {
-      code: normalizeCode(formData.code),
-      name: formData.name.trim(),
-      lecturer_id: lecturerId,
-      enrollment_enabled: Boolean(formData.enrollment_enabled),
+    if (!submission.begin()) return
+    try {
+      const payload = {
+        code: normalizeCode(formData.code),
+        name: formData.name.trim(),
+        lecturer_id: lecturerId,
+        enrollment_enabled: Boolean(formData.enrollment_enabled),
+      }
+
+      const passwordValue = formData.enrollment_password.trim()
+      if (!isEdit || passwordValue) {
+        payload.enrollment_password_hash = await sha256(passwordValue)
+      }
+
+      if (submission.isMounted()) await onSubmit(payload)
+    } catch (error) {
+      if (submission.isMounted()) setErrors({ submit: error.message || 'Unable to save this module.' })
+    } finally {
+      submission.end()
     }
-
-    const passwordValue = formData.enrollment_password.trim()
-    if (!isEdit || passwordValue) {
-      payload.enrollment_password_hash = await sha256(passwordValue)
-    }
-
-    onSubmit(payload)
-  }
-
-  if (!isOpen) {
-    return null
   }
 
   return (
@@ -148,7 +144,7 @@ function ModuleFormModal({
                 : 'Create a new module for attendance tracking.'}
             </p>
           </div>
-          <button className="ghost-button" type="button" onClick={onClose}>
+          <button className="ghost-button" type="button" onClick={onClose} disabled={isSubmitting || submission.busy}>
             Close
           </button>
         </div>
@@ -260,13 +256,18 @@ function ModuleFormModal({
             )}
           </div>
 
-          <button className="primary-button" type="submit" disabled={!canSubmit}>
-            {isEdit ? 'Save Changes' : 'Create Module'}
+          {errors.submit && <span className="field-error">{errors.submit}</span>}
+          <button className="primary-button" type="submit" disabled={!canSubmit || submission.busy}>
+            {submission.busy ? 'Saving Module...' : isEdit ? 'Save Changes' : 'Create Module'}
           </button>
         </form>
       </div>
     </div>
   )
+}
+
+function ModuleFormModal({ isOpen, ...props }) {
+  return isOpen ? <ModuleForm key={props.initialValues?.id || props.initialValues?.code || props.mode} {...props} /> : null
 }
 
 export default ModuleFormModal

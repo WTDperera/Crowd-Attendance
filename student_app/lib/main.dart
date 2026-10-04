@@ -161,7 +161,8 @@ class AuthWrapper extends StatelessWidget {
 // ============================================================================
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.login});
+  final Future<void> Function(String email, String password)? login;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -191,11 +192,19 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
+      if (widget.login != null) {
+        await widget.login!(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+        return;
+      }
       // Step 1: Authenticate with Firebase Auth
       final userCredential = await appAuth
           .signInWithEmailAndPassword(
@@ -208,12 +217,10 @@ class _LoginScreenState extends State<LoginScreen> {
       final currentDeviceId = await _getDeviceId();
 
       // Step 2: Check Firestore for device binding
-      final studentRef = appFirestore
-          .collection('students')
-          .doc(uid);
-        final studentDoc = await studentRef
-          .get()
-          .timeout(const Duration(seconds: 20));
+      final studentRef = appFirestore.collection('students').doc(uid);
+      final studentDoc = await studentRef.get().timeout(
+        const Duration(seconds: 20),
+      );
 
       if (!studentDoc.exists) {
         await appAuth.signOut();
@@ -258,7 +265,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Login timed out. Check your connection and try again.'),
+            content: Text(
+              'Login timed out. Check your connection and try again.',
+            ),
             backgroundColor: Colors.red,
           ),
         );

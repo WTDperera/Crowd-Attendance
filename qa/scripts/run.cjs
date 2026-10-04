@@ -14,7 +14,7 @@ const env = Object.fromEntries(Object.entries(configured).filter(([key]) => allo
 env.FIREBASE_EMULATORS_PATH = path.join(qaDir, '.cache/emulators');
 env.XDG_CONFIG_HOME = path.join(qaDir, '.cache/config'); // Isolate CLI login/preferences too.
 env.CI = 'true'; // Noninteractive CLI; skip remote MOTD/update checks.
-if (['emulators', 'smoke', 'security', 'access', 'rounds', 'finalization', 'reports'].includes(process.argv[2])) {
+if (['emulators', 'smoke', 'security', 'access', 'rounds', 'finalization', 'reports', 'components'].includes(process.argv[2])) {
   // Firebase requires rules inside its config root. Refresh from the actual
   // application rules on EVERY launch; never maintain permissive QA rules.
   fs.mkdirSync(path.join(qaDir, '.cache'), { recursive: true });
@@ -24,6 +24,7 @@ const firebaseCli = path.join(qaDir, 'node_modules/firebase-tools/lib/bin/fireba
 const viteCli = path.join(root, 'web_app/admin-portal/frontend/node_modules/vite/bin/vite.js');
 const common = ['--config', path.join(qaDir, 'firebase.qa.json'), '--project', env.GCLOUD_PROJECT, '--only', 'auth,firestore'];
 const actions = {
+  components: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/p08.cjs'] },
   emulators: { args: [firebaseCli, 'emulators:start', ...common] },
   smoke: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/smoke.cjs'] },
   security: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/smoke.cjs security'] },
@@ -41,6 +42,8 @@ const actions = {
   api: { args: [path.join(root, 'web_app/admin-portal/server/index.js')] },
   web: { args: [viteCli, '--mode', 'qa', '--host', '127.0.0.1'], cwd: path.join(root, 'web_app/admin-portal/frontend') },
   'build-web': { args: [viteCli, 'build', '--mode', 'qa'], cwd: path.join(root, 'web_app/admin-portal/frontend') },
+  'component-tests': { args: [path.join(root, 'web_app/admin-portal/frontend/node_modules/vitest/vitest.mjs'), 'run', '--config', 'vitest.config.js'], cwd: path.join(root, 'web_app/admin-portal/frontend') },
+  'component-integration': { args: [path.join(root, 'web_app/admin-portal/frontend/node_modules/vitest/vitest.mjs'), 'run', '--config', 'vitest.integration.config.js', '--mode', 'qa'], cwd: path.join(root, 'web_app/admin-portal/frontend') },
 };
 const action = actions[process.argv[2]];
 if (!action) throw new Error(`Expected one of: ${Object.keys(actions).join(', ')}`);

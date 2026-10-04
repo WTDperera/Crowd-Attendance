@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { doc, getDoc } from 'firebase/firestore'
 import { auth, db } from '../firebase/firebase'
@@ -12,7 +12,14 @@ export function AuthProvider({ children }) {
   const [accessDeniedMessage, setAccessDeniedMessage] = useState('')
 
   useEffect(() => {
+    let revision = 0
+    let disposed = false
     const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+      const currentRevision = ++revision
+      const isCurrent = () => !disposed && revision === currentRevision
+      setUser(null)
+      setLecturerProfile(null)
+      setAuthLoading(Boolean(nextUser))
       if (!nextUser) {
         setUser(null)
         setLecturerProfile(null)
@@ -26,27 +33,26 @@ export function AuthProvider({ children }) {
       // a lecturers/{uid} profile document exists for this account.
       try {
         const lecturerDoc = await getDoc(doc(db, 'lecturers', nextUser.uid))
+        if (!isCurrent()) return
 
         if (!lecturerDoc.exists()) {
-          await signOut(auth)
-          setUser(null)
-          setLecturerProfile(null)
           setAccessDeniedMessage(
             'This account is not authorized to access the admin portal.'
           )
           setAuthLoading(false)
+          // UI access remains denied even if sign-out fails (e.g. offline).
+          await signOut(auth).catch(() => {})
           return
         }
 
         setLecturerProfile(lecturerDoc.data())
       } catch {
-        await signOut(auth)
-        setUser(null)
-        setLecturerProfile(null)
+        if (!isCurrent()) return
         setAccessDeniedMessage(
           'Unable to verify lecturer access right now. Please try again.'
         )
         setAuthLoading(false)
+        await signOut(auth).catch(() => {})
         return
       }
 
@@ -55,11 +61,11 @@ export function AuthProvider({ children }) {
       setAuthLoading(false)
     })
 
-    return () => unsubscribe()
+    return () => { disposed = true; revision++; unsubscribe() }
   }, [])
 
-  const logout = () => signOut(auth)
-  const clearAccessDeniedMessage = () => setAccessDeniedMessage('')
+  const logout = useCallback(() => signOut(auth), [])
+  const clearAccessDeniedMessage = useCallback(() => setAccessDeniedMessage(''), [])
 
   const lecturerName =
   lecturerProfile?.fullName ||
@@ -79,7 +85,7 @@ const value = useMemo(
     accessDeniedMessage,
     clearAccessDeniedMessage,
   }),
-  [user, lecturerProfile, lecturerName, authLoading, accessDeniedMessage]
+  [user, lecturerProfile, lecturerName, authLoading, accessDeniedMessage, logout, clearAccessDeniedMessage]
 )
 
   return <AuthContext.Provider value={value}>

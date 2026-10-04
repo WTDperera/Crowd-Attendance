@@ -5,12 +5,14 @@ import AuthLayout from '../components/AuthLayout.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import { auth } from '../firebase/firebase'
 import { loginWithBackend } from '../services/authService'
+import useSubmission from '../hooks/useSubmission'
 
 
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function LoginPage() {
+  const submission = useSubmission()
   const navigate = useNavigate()
   const { user, authLoading, accessDeniedMessage, clearAccessDeniedMessage } =
     useAuth()
@@ -58,6 +60,7 @@ function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (submission.busy || authLoading) return
     const nextErrors = validate()
     setErrors(nextErrors)
     setFormError('')
@@ -66,6 +69,7 @@ function LoginPage() {
       return
     }
 
+    if (!submission.begin()) return
     try {
       // The backend verifies the email/password AND checks that this
       // account has a lecturer profile before returning anything. A
@@ -75,18 +79,22 @@ function LoginPage() {
         formData.email,
         formData.password
       )
+      if (!submission.isMounted()) return
       await setPersistence(
         auth,
         formData.remember ? browserLocalPersistence : browserSessionPersistence
       )
+      if (!submission.isMounted()) return
       await signInWithCustomToken(auth, token)
       // Don't navigate here — AuthContext still re-verifies the lecturer
       // profile via Firestore as a second, independent check. The
       // useEffect below navigates once that resolves successfully.
     } catch (error) {
-      setFormError(
+      if (submission.isMounted()) setFormError(
         error?.message || 'Unable to sign in right now. Please try again.'
       )
+    } finally {
+      submission.end()
     }
   }
 
@@ -159,8 +167,8 @@ function LoginPage() {
         {accessDeniedMessage && (
           <span className="field-error">{accessDeniedMessage}</span>
         )}
-        <button className="primary-button" type="submit" disabled={!canSubmit}>
-          Sign in
+        <button className="primary-button" type="submit" disabled={!canSubmit || submission.busy || authLoading}>
+          {submission.busy || authLoading ? 'Signing in...' : 'Sign in'}
         </button>
       </form>
     </AuthLayout>

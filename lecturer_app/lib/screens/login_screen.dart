@@ -3,7 +3,10 @@ import '../services/auth_service.dart';
 import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({super.key, this.login, this.destination});
+  final Future<Map<String, dynamic>> Function(String email, String password)?
+  login;
+  final WidgetBuilder? destination;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -13,7 +16,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _authService = AuthService();
   bool _isLoading = false;
   bool _obscurePassword = true;
 
@@ -25,15 +27,21 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
+    if (_isLoading) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      final result = await _authService.loginWithEmailPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-      );
+      final result =
+          await (widget.login?.call(
+                _emailController.text.trim(),
+                _passwordController.text,
+              ) ??
+              AuthService().loginWithEmailPassword(
+                email: _emailController.text.trim(),
+                password: _passwordController.text,
+              ));
 
       if (!mounted) return;
 
@@ -48,7 +56,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Navigate to dashboard
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute(
+          builder: widget.destination ?? (_) => const DashboardScreen(),
+        ),
       );
     } catch (e) {
       if (!mounted) return;
@@ -87,10 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
-                        colors: [
-                          Colors.cyan.shade400,
-                          Colors.blue.shade600,
-                        ],
+                        colors: [Colors.cyan.shade400, Colors.blue.shade600],
                       ),
                       boxShadow: [
                         BoxShadow(
@@ -197,7 +204,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             color: Colors.grey.shade400,
                           ),
                           onPressed: () {
-                            setState(() => _obscurePassword = !_obscurePassword);
+                            setState(
+                              () => _obscurePassword = !_obscurePassword,
+                            );
                           },
                         ),
                         border: InputBorder.none,
@@ -218,10 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     height: 56,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [
-                          Colors.cyan.shade400,
-                          Colors.blue.shade600,
-                        ],
+                        colors: [Colors.cyan.shade400, Colors.blue.shade600],
                       ),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [

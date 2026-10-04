@@ -180,3 +180,27 @@ $env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jd
 ```
 
 Student probes cover the actual report service, a focused report-card eligibility boundary and Colombo date rendering; lecturer probes call the actual report adapter. Record dates retain their actual UTC instant until displayed in Colombo time. Missing durations no longer invent a two-hour attendance interval. They do not establish normal UI journeys or physical BLE success. Stop the owned QA processes afterward. See [P07 report](reports/P07.md). P08 requires its own approval/start instruction; student Windows tests remain deferred.
+
+## P08 — component and retained-feature checks
+
+The user approved P07 and started P08 on 2026-10-04. Portal account/module management uses the real services. Portal Add/Edit Session and their in-memory providers are excluded from the running application; session creation remains in the lecturer Android app. Old mock source files remain unmounted.
+
+From `qa`, with QA API/emulator ports free:
+
+```powershell
+npm.cmd run test:p08
+```
+
+This starts isolated Firebase emulators and runs the retained P02–P07 suite, focused React components, then React form persistence/fault-recovery checks serially. The latter use actual local Auth/Firestore/API calls and fresh page mounts; they use jsdom at the allowed QA origin, not a browser. Two fault cases intentionally reject one SDK operation; compensation and retry are real. Frontend dependencies must be installed with its updated lockfile. `npm.cmd run test:components` in the frontend runs only the component mocks. With local emulators already running and port 5000 free, `node scripts/run.cjs component-integration` runs just the real form checks.
+
+For Android, start the dedicated QA AVD (`emulator-5580`), local Firebase emulators and QA API. Close both previous test apps before reseeding. From `qa`, run `node scripts/run.cjs p04-fixture` successfully before **each** app's P08 probe. This leaves QA202 open/not enrolled by A and QA303 closed. A Firestore emulator reset can return 499 after cancelled native listeners; close the apps, rerun the fixture and require exit 0 before relying on readiness. No failed seed is a pass.
+
+From each app folder:
+
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="C:/Program Files/Eclipse Adoptium/jdk-21.0.11.10-hotspot" -Dorg.gradle.daemon=false'
+& 'C:/sdk/flutter/bin/flutter.bat' drive --no-pub --driver=test_driver/qa_bootstrap.dart --target=integration_test/ui_components_test.dart -d emulator-5580 --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+& 'C:/sdk/flutter/bin/flutter.bat' build apk --debug --no-pub -t lib/main.dart --dart-define=QA_MODE=true --dart-define=QA_PROJECT_ID=demo-crowd-attendance-qa --dart-define=QA_EMULATOR_HOST=10.0.2.2
+```
+
+Widget definitions are under each app's `test/ui_components_test.dart`, registered by the Android target. Text/gestures and BLE callbacks are simulated. Actual mobile login, student enrollment and lecturer session creation use the local services; server reads/fresh mounts check persistence. The test keyboard is registered to prevent competition with the native IME; native keyboard behavior and physical BLE are unverified. Student Windows tests remain deferred. Full journeys and accessibility/visual automation belong to P09; physical checks remain P12. See [P08 evidence](reports/P08.md). Stop the owned QA processes afterward.

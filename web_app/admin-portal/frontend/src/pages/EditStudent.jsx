@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import useSubmission from '../hooks/useSubmission'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getStudents, updateStudent } from '../services/studentService'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function EditStudent() {
+  const submission = useSubmission()
   const { id } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -66,6 +68,7 @@ function EditStudent() {
     return (
       <div className="card">
         <h4>Student not found</h4>
+        {formError && <span className="field-error">{formError}</span>}
         <p className="helper-text">Return to the students list to continue.</p>
         <button
           className="primary-button"
@@ -102,12 +105,11 @@ function EditStudent() {
     return nextErrors
   }
 
-  const canSubmit = useMemo(() => {
-    return formData.email && formData.reg_no
-  }, [formData.email, formData.reg_no])
+  const canSubmit = formData.email && formData.reg_no
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (submission.busy) return
     const nextErrors = validate()
     setErrors(nextErrors)
     setFormError('')
@@ -116,16 +118,20 @@ function EditStudent() {
       return
     }
 
+    if (!submission.begin()) return
     try {
       await updateStudent(student.id, {
         email: formData.email,
         reg_no: formData.reg_no,
       })
+      if (!submission.isMounted()) return
       navigate('/students', {
         state: { message: 'Student updated successfully.' },
       })
     } catch (error) {
-      setFormError(error.message)
+      if (submission.isMounted()) setFormError(error.message)
+    } finally {
+      submission.end()
     }
   }
 
@@ -176,8 +182,8 @@ function EditStudent() {
 
         {formError && <span className="field-error">{formError}</span>}
 
-        <button className="primary-button" type="submit" disabled={!canSubmit}>
-          Save Changes
+        <button className="primary-button" type="submit" disabled={!canSubmit || submission.busy}>
+          {submission.busy ? 'Saving Changes...' : 'Save Changes'}
         </button>
       </form>
     </div>

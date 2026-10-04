@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react'
-import { useStudents } from '../context/StudentsContext.jsx'
+import useSubmission from '../hooks/useSubmission'
 import { addStudent as addStudentRequest } from '../services/studentService'
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function AddStudent() {
-  const { addStudent: addStudentLocal } = useStudents()
+  const submission = useSubmission()
   const [formData, setFormData] = useState({
     reg_no: '',
     email: '',
@@ -52,6 +52,7 @@ function AddStudent() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (submission.busy) return
     const nextErrors = validate()
     setErrors(nextErrors)
     setFormError('')
@@ -61,22 +62,17 @@ function AddStudent() {
       return
     }
 
+    if (!submission.begin()) return
     try {
       const response = await addStudentRequest(formData)
-      const student = response.student || {
-        id: response.uid,
-        reg_no: formData.reg_no,
-        email: formData.email,
-        device_id: null,
-        device_locked_at: null,
-        last_login: null,
-      }
-
-      addStudentLocal(student)
+      if (!response.uid && !response.student?.id) throw new Error('Account creation could not be confirmed. Refresh the student list before retrying.')
+      if (!submission.isMounted()) return
       setFormSuccess('Student account created successfully.')
       setFormData({ reg_no: '', email: '', password: '' })
     } catch (error) {
-      setFormError(error.message)
+      if (submission.isMounted()) setFormError(error.message)
+    } finally {
+      submission.end()
     }
   }
 
@@ -149,8 +145,8 @@ function AddStudent() {
         {formError && <span className="field-error">{formError}</span>}
         {formSuccess && <span className="helper-text">{formSuccess}</span>}
 
-        <button className="primary-button" type="submit" disabled={!canSubmit}>
-          Create Student
+        <button className="primary-button" type="submit" disabled={!canSubmit || submission.busy}>
+          {submission.busy ? 'Creating Student...' : 'Create Student'}
         </button>
       </form>
     </div>

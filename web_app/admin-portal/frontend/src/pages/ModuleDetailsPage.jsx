@@ -524,6 +524,7 @@ function ModuleDetailsPage() {
             <span className="helper-text">
               All active and completed sessions recorded for this module.
             </span>
+            <p className="helper-text">Create attendance sessions in the lecturer Android app.</p>
           </div>
         </div>
 

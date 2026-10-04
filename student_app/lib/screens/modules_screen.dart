@@ -14,7 +14,10 @@ class ModulesScreen extends StatefulWidget {
 }
 
 class _ModulesScreenState extends State<ModulesScreen> {
-  late final ModuleService _service;
+  late ModuleService _service;
+  late Stream<Set<String>> _enrolledCodesStream;
+  late Stream<List<Module>> _allModulesStream;
+  int _generation = 0;
   final Set<String> _enrollingCodes = <String>{};
 
   static const double _cardPadding = 16;
@@ -24,6 +27,24 @@ class _ModulesScreenState extends State<ModulesScreen> {
   void initState() {
     super.initState();
     _service = widget.service ?? ModuleService();
+    _bindStreams();
+  }
+
+  void _bindStreams() {
+    _enrolledCodesStream = _service.watchEnrolledCodes(widget.studentUid);
+    _allModulesStream = _service.watchAllModules();
+  }
+
+  @override
+  void didUpdateWidget(covariant ModulesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.studentUid != widget.studentUid ||
+        oldWidget.service != widget.service) {
+      _generation++;
+      _enrollingCodes.clear();
+      _service = widget.service ?? ModuleService();
+      _bindStreams();
+    }
   }
 
   @override
@@ -35,7 +56,7 @@ class _ModulesScreenState extends State<ModulesScreen> {
         title: const Text('All Modules'),
       ),
       body: StreamBuilder<Set<String>>(
-        stream: _service.watchEnrolledCodes(widget.studentUid),
+        stream: _enrolledCodesStream,
         builder: (context, myEnrollmentsSnap) {
           if (myEnrollmentsSnap.hasError) {
             return _ErrorState(message: myEnrollmentsSnap.error.toString());
@@ -48,7 +69,7 @@ class _ModulesScreenState extends State<ModulesScreen> {
           final myEnrollmentCodes = myEnrollmentsSnap.data ?? <String>{};
 
           return StreamBuilder<List<Module>>(
-            stream: _service.watchAllModules(),
+            stream: _allModulesStream,
             builder: (context, modulesSnap) {
               if (modulesSnap.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -182,22 +203,36 @@ class _ModulesScreenState extends State<ModulesScreen> {
                                         (enrolled || isClosed || isLoading)
                                         ? null
                                         : () async {
+                                            if (_enrollingCodes.contains(
+                                              moduleCode,
+                                            )) {
+                                              return;
+                                            }
+                                            final generation = _generation;
+                                            final studentUid =
+                                                widget.studentUid;
+                                            final service = _service;
                                             setState(() {
                                               _enrollingCodes.add(moduleCode);
                                             });
                                             try {
                                               final plain =
                                                   await _promptForPassword(
-                                                    context,
+                                                    this.context,
                                                   );
-                                              if (plain == null) return;
+                                              if (plain == null ||
+                                                  !mounted ||
+                                                  generation != _generation) {
+                                                return;
+                                              }
 
                                               if (plain.trim().isEmpty) {
-                                                if (!context.mounted) {
+                                                if (!mounted ||
+                                                    generation != _generation) {
                                                   return;
                                                 }
                                                 ScaffoldMessenger.of(
-                                                  context,
+                                                  this.context,
                                                 ).showSnackBar(
                                                   const SnackBar(
                                                     content: Text(
@@ -209,16 +244,17 @@ class _ModulesScreenState extends State<ModulesScreen> {
                                                 return;
                                               }
 
-                                              await _service.enrollWithPassword(
-                                                studentUid: widget.studentUid,
+                                              await service.enrollWithPassword(
+                                                studentUid: studentUid,
                                                 module: module,
                                                 plainPassword: plain,
                                               );
-                                              if (!context.mounted) {
+                                              if (!mounted ||
+                                                  generation != _generation) {
                                                 return;
                                               }
                                               ScaffoldMessenger.of(
-                                                context,
+                                                this.context,
                                               ).showSnackBar(
                                                 SnackBar(
                                                   content: Text(
@@ -228,7 +264,8 @@ class _ModulesScreenState extends State<ModulesScreen> {
                                                 ),
                                               );
                                             } catch (e) {
-                                              if (!context.mounted) {
+                                              if (!mounted ||
+                                                  generation != _generation) {
                                                 return;
                                               }
                                               final msg =
@@ -237,7 +274,7 @@ class _ModulesScreenState extends State<ModulesScreen> {
                                                   ? 'Wrong password'
                                                   : e.toString();
                                               ScaffoldMessenger.of(
-                                                context,
+                                                this.context,
                                               ).showSnackBar(
                                                 SnackBar(
                                                   content: Text(msg),
@@ -245,7 +282,8 @@ class _ModulesScreenState extends State<ModulesScreen> {
                                                 ),
                                               );
                                             } finally {
-                                              if (mounted) {
+                                              if (mounted &&
+                                                  generation == _generation) {
                                                 setState(() {
                                                   _enrollingCodes.remove(
                                                     moduleCode,

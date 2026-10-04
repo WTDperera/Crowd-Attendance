@@ -2,26 +2,32 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../services/session_service.dart';
+import '../services/scanner_bindings.dart';
 import '../services/round_scanner_controller.dart';
 import '../services/detection_gate.dart';
 
 class ScannerScreen extends StatefulWidget {
   final String sessionId;
+  final ScannerBindings? bindings;
 
-  const ScannerScreen({super.key, required this.sessionId});
+  const ScannerScreen({super.key, required this.sessionId, this.bindings});
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  final _sessionService = SessionService();
+  late final ScannerBindings _bindings;
   late final RoundScannerController _rounds;
-  static const String SERVICE_UUID = 'bf27730d-860a-4e09-8f3c-7a2b5d9e4f1c';
   bool _isScanning = false;
   bool _busy = false;
+  bool _ending = false;
+  String? _sessionError;
+  bool get _unavailable =>
+      _busy ||
+      _ending ||
+      _sessionData['status'] != 'active' ||
+      _sessionError != null;
   Map<String, dynamic> _sessionData = {};
   Map<String, Map<String, dynamic>> _detectedStudents = {};
   int _devicesFound = 0;
@@ -33,47 +39,29 @@ class _ScannerScreenState extends State<ScannerScreen> {
   @override
   void initState() {
     super.initState();
-    _rounds = RoundScannerController(
-      loadRoster: () => _sessionService.loadSessionRoster(widget.sessionId),
-      begin: () => _sessionService.beginRound(widget.sessionId),
-      finish: (id, cancel) => cancel
-          ? _sessionService.cancelRound(widget.sessionId, id)
-          : _sessionService.completeRound(widget.sessionId, id),
-      persist: (round, uid, regNo, rssi) async {
-        await _sessionService.markAttendance(
-          sessionId: widget.sessionId,
-          roundId: round,
-          studentId: uid,
-          regNo: regNo,
-          rssi: rssi,
-        );
+    _bindings = widget.bindings ?? ScannerBindings.forSession(widget.sessionId);
+    _rounds = _bindings.rounds;
+    _sessionStream = _bindings.session.listen(
+      (data) {
+        if (mounted) {
+          setState(() {
+            _sessionData = data ?? {};
+            _sessionError = data == null
+                ? 'Session not found. Return to your sessions.'
+                : null;
+          });
+        }
+      },
+      onError: (Object error) {
+        if (mounted) {
+          setState(() => _sessionError = 'Cannot load session: $error');
+        }
       },
     );
-    _sessionStream = _sessionService.getSessionStream(widget.sessionId).listen((
-      snapshot,
-    ) {
-      if (mounted && snapshot.exists) {
-        setState(() => _sessionData = snapshot.data() as Map<String, dynamic>);
-      }
-    }, onError: (Object error) => _showError('Cannot load session: $error'));
-    _attendanceStream = _sessionService
-        .getAttendanceRecordsStream(widget.sessionId)
-        .listen(
-          (snapshot) {
-            if (mounted) {
-              setState(
-                () => _detectedStudents = {
-                  for (final doc in snapshot.docs)
-                    (doc.data() as Map<String, dynamic>)['reg_no'] as String:
-                        doc.data() as Map<String, dynamic>,
-                },
-              );
-            }
-          },
-          onError: (Object error) =>
-              _showError('Cannot load attendance: $error'),
-        );
-    _radioStream = FlutterBluePlus.isScanning.listen((running) {
+    _attendanceStream = _bindings.attendance.listen((data) {
+      if (mounted) setState(() => _detectedStudents = data);
+    }, onError: (Object error) => _showError('Cannot load attendance: $error'));
+    _radioStream = _bindings.radio.listen((running) {
       if (!running && _isScanning) {
         _rounds.gate.pause(); // timeout/radio loss pauses, never completes
         if (mounted) setState(() => _isScanning = false);
@@ -83,33 +71,26 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   void dispose() {
-    _rounds.gate.pause();
+    _rounds.dispose();
     _sessionStream?.cancel();
     _attendanceStream?.cancel();
     _scanSubscription?.cancel();
     _radioStream?.cancel();
-    FlutterBluePlus.stopScan(); // Navigation is not a completed round.
+    unawaited(_bindings.stopRadio().catchError((Object _) {}));
     super.dispose();
   }
 
   Future<void> _startScanning() async {
-    if (_busy) return;
+    if (_unavailable) return;
     setState(() => _busy = true);
     try {
-      final permissions = await [
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.location,
-      ].request();
-      if (permissions.values.any((status) => !status.isGranted)) {
-        throw StateError('Bluetooth/location permissions required.');
-      }
-      if (!await FlutterBluePlus.isSupported) {
-        throw StateError('Bluetooth not supported.');
-      }
+      await _bindings.requestRadio();
+      if (!mounted) return;
       await _rounds.start();
+      if (!mounted) return;
       await _scanSubscription?.cancel();
-      _scanSubscription = FlutterBluePlus.onScanResults.listen(
+      if (!mounted) return;
+      _scanSubscription = _bindings.results.listen(
         (results) {
           for (final result in results) {
             _processScanResult(result);
@@ -121,11 +102,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
           _showError('Scan paused: $error');
         },
       );
-      await FlutterBluePlus.startScan(
-        withServices: [Guid(SERVICE_UUID)],
-        timeout: const Duration(minutes: 30),
-        androidUsesFineLocation: true,
-      );
+      await _bindings.startRadio();
+      if (!mounted) {
+        await _bindings.stopRadio();
+        return;
+      }
       if (mounted) {
         setState(() {
           _isScanning = true;
@@ -161,8 +142,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
     setState(() => _busy = true);
     try {
       _rounds.gate.pause();
-      await FlutterBluePlus.stopScan();
+      await _bindings.stopRadio();
       await _scanSubscription?.cancel();
+      if (!mounted) return;
       if (mounted) setState(() => _isScanning = false);
       _rounds.currentRound ??= _sessionData['active_round_id'] as String?;
       await _rounds.complete(cancel: cancel);
@@ -186,53 +168,70 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   Future<void> _endSession() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1D1E33),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('End Session', style: TextStyle(color: Colors.white)),
-        content: Text(
-          'Are you sure you want to end this session?\n\n${_detectedStudents.length} students marked present.',
-          style: const TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text(
-              'Cancel',
-              style: TextStyle(color: Colors.grey.shade400),
-            ),
+    if (_unavailable) return;
+    setState(() => _ending = true);
+    try {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1D1E33),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red.shade600,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+          title: const Text(
+            'End Session',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Text(
+            'Are you sure you want to end this session?\n\n${_detectedStudents.length} students marked present.',
+            style: const TextStyle(color: Colors.grey),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey.shade400),
               ),
             ),
-            child: const Text(
-              'End Session',
-              style: TextStyle(color: Colors.white),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text(
+                'End Session',
+                style: TextStyle(color: Colors.white),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
 
-    if (confirm == true) {
-      if (_isScanning || _rounds.currentRound != null) await _stopScanning();
-      if (_rounds.currentRound != null) return;
-      try {
-        await _sessionService.endSession(widget.sessionId);
-      } catch (error) {
-        _showError('Session not completed: $error');
-        return;
+      if (!mounted) return;
+      if (confirm == true) {
+        if (_isScanning ||
+            _rounds.currentRound != null ||
+            _sessionData['active_round_id'] != null) {
+          await _stopScanning();
+        }
+        if (_rounds.currentRound != null) return;
+        try {
+          if (!mounted) return;
+          await _bindings.endSession();
+        } catch (error) {
+          _showError('Session not completed: $error');
+          return;
+        }
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
       }
-      if (mounted) {
-        Navigator.of(context).pop();
-      }
+    } finally {
+      if (mounted) setState(() => _ending = false);
     }
   }
 
@@ -251,9 +250,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_sessionData['active_round_id'] != null)
+            if (_sessionError != null)
+              Text(
+                _sessionError!,
+                style: const TextStyle(color: Colors.redAccent),
+              ),
+            if (_rounds.currentRound != null ||
+                _sessionData['active_round_id'] != null)
               TextButton(
-                onPressed: _busy ? null : () => _stopScanning(cancel: true),
+                onPressed: _unavailable
+                    ? null
+                    : () => _stopScanning(cancel: true),
                 child: const Text('Cancel open round'),
               ),
             // Session info card
@@ -403,7 +410,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: _busy
+                  onPressed: _unavailable
                       ? null
                       : _isScanning
                       ? () => _stopScanning()
@@ -415,7 +422,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   label: Text(
                     _isScanning
                         ? 'Complete Scan Round'
-                        : (_sessionData['active_round_id'] != null
+                        : (_rounds.currentRound != null ||
+                                  _sessionData['active_round_id'] != null
                               ? 'Resume Scan Round'
                               : 'Start New Scan Round'),
                     style: const TextStyle(
@@ -592,7 +600,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _endSession,
+                  onPressed: _unavailable ? null : _endSession,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red.shade600,
                     shape: RoundedRectangleBorder(

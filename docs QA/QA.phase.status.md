@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P07 only — ready for review
+**Current authorized phase:** P08 only — completed, awaiting review
 
-**Last approved phase:** P06
+**Last approved phase:** P07
 
-**Implementation status:** P01–P06 approved; P07 READY_FOR_REVIEW. P08–P13 are not authorized.
+**Implementation status:** P01–P07 approved; P08 READY_FOR_REVIEW. P09–P13 are not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -17,8 +17,8 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 | P04 — Enrollment and API ownership | APPROVED | 2026-10-04: “I approve P03. Please start P04” | [P04 report](../qa/reports/P04.md): final combined suite 27/27; actual Android enrollment/session permission scenario 1/1 per app; both normal QA APKs and QA web build pass; baseline analysis limits recorded | 2026-10-04: “I approve P04. Please start P05” |
 | P05 — Durable multiple scan rounds | APPROVED | 2026-10-04: “I approve P04. Please start P05” | [P05 report](../qa/reports/P05.md): combined suite 34/34; unit 11/11; actual Android persistence 2/2; fresh-process prepare/resume 1/1 each; P04 lecturer probe 1/1; normal lecturer QA APK builds | 2026-10-04: “I approve P05. Please start P06” |
 | P06 — Finalization, recovery and corrections | APPROVED | 2026-10-04: “I approve P05. Please start P06” | [P06 report](../qa/reports/P06.md): combined 44/44; unit 11/11; Android P06 1/1, retained P05 2/2 and P04 lecturer 1/1; targeted Dart analysis clean; normal lecturer QA APK builds | 2026-10-04: “I approve P06. Please start P07” |
-| P07 — Report and workbook correctness | READY_FOR_REVIEW | 2026-10-04: “I approve P06. Please start P07” | [P07 report](../qa/reports/P07.md): final combined 64/64; Android student 3/3, lecturer 1/1; serialized XLSX/formula checks; both normal QA APKs and QA web build pass; analysis limits recorded | None |
-| P08 — UI components and retained demo features | NOT_STARTED | None | None | None |
+| P07 — Report and workbook correctness | APPROVED | 2026-10-04: “I approve P06. Please start P07” | [P07 report](../qa/reports/P07.md): final combined 64/64; Android student 3/3, lecturer 1/1; serialized XLSX/formula checks; both normal QA APKs and QA web build pass; analysis limits recorded | 2026-10-04: “I approve P07. Please start P08” |
+| P08 — UI components and retained demo features | READY_FOR_REVIEW | 2026-10-04: “I approve P07. Please start P08” | [P08 report](../qa/reports/P08.md): combined 94/94; Android student 6/6, lecturer 7/7; retained Android P05 2/2 and pure 11/11; actual form persistence/fault recovery; normal/QA web and both Android APK builds pass; baseline lint limits recorded | None |
 | P09 — Automated browser and mobile journeys | NOT_STARTED | None | None | None |
 | P10 — Security checks and modest load scripts | NOT_STARTED | None | None | None |
 | P11 — Test commands and GitHub Actions | NOT_STARTED | None | None | None |
@@ -34,6 +34,16 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-04 — “I approve P07. Please start P08” approves P07 and starts P08 only. Android scope and student Windows test deferral persist. P09 requires separate approval/start.
+
+## P08 review checkpoint — 2026-10-04
+
+P08 is **READY_FOR_REVIEW**, not approved. [Evidence and exact manual Git inventory](../qa/reports/P08.md): retained local suite 64/64, React components 25/25 and actual form persistence/fault recovery 5/5, combined **94/94**, zero skipped. Student Android 6/6 and lecturer Android 7/7 substantive component/real-service cases pass; retained lecturer Android round persistence 2/2 and pure domain/gate 11/11 pass. Both final normal QA APKs and normal/QA web builds pass. Targeted analysis/lint pass; full frontend lint retains 10 errors/two warnings, detailed in the report.
+
+Repaired portal stale-auth, duplicate submission, direct-edit hook crash and student enrollment stream/context loss; guarded scanner disposal/retry/end controls. Mock portal session routes/providers are excluded per P01 D08. Actual local create/edit/delete, Auth/Firestore partial-failure recovery and refreshed storage are verified. Widget gestures, text and radio callbacks are simulated; jsdom is not a browser. Native keyboard, physical BLE, real-user usability, full journeys, CI/load and final regression remain unrun. Student Windows testing remains deferred. P09–P13 remain unauthorized.
+
+Branch `MAIN`, baseline/current HEAD `807fb6f22710975da5309912f16bd10d36e65152`; origin unchanged. Index empty; no Git mutation, deployment or live data operation. Owned QA processes stopped, QA listener count zero, adb device list empty. Review the report and changes; P09 requires explicit P08 approval and a separate start instruction.
 
 2026-10-04 — “I approve P06. Please start P07” approves P06 and starts P07 only. P08 requires separate approval/start.
 

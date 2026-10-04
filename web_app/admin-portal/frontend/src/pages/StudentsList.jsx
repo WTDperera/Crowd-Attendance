@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { deleteStudent, getStudents } from '../services/studentService'
+import useSubmission from '../hooks/useSubmission'
 
 const STATUS_OPTIONS = ['All', 'Active', 'Locked', 'Device Not Set']
 const LOGIN_OPTIONS = ['All', 'Logged In', 'Never Logged In']
 const PAGE_SIZE = 10
 
 function StudentsList() {
+  const deletion = useSubmission()
   const [students, setStudents] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -86,20 +88,25 @@ function StudentsList() {
   }, [filteredStudents, page])
 
   const handleDelete = async (id) => {
+    if (deletion.busy) return
     const shouldDelete = window.confirm('Delete this student account?')
     if (!shouldDelete) {
       return
     }
 
+    if (!deletion.begin()) return
     setMessage('')
     setErrorMessage('')
 
     try {
       await deleteStudent(id)
+      if (!deletion.isMounted()) return
       setStudents((prev) => prev.filter((student) => student.id !== id))
       setMessage('Student deleted successfully.')
     } catch (error) {
-      setErrorMessage(error.message)
+      if (deletion.isMounted()) setErrorMessage(error.message)
+    } finally {
+      deletion.end()
     }
   }
 
@@ -217,6 +224,7 @@ function StudentsList() {
                         className="text-link danger"
                         type="button"
                         onClick={() => handleDelete(student.id)}
+                        disabled={deletion.busy}
                       >
                         Delete
                       </button>
