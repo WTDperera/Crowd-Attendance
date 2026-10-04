@@ -1,0 +1,13 @@
+{
+  "gitleaks": {
+    "version": "8.30.1",
+    "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip",
+    "sha256": "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e",
+    "binarySha256": "17157e2ee8b76fc8b1d8bee607a250e34b8a8023c8bc81822d4b5ee4d78fcb7c"
+  },
+  "osv": {
+    "version": "2.6.0",
+    "url": "https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_windows_amd64.exe",
+    "sha256": "e0ed7644118b717b028c249ee9d3515024e55e8510747ca08906eb96765354d6"
+  }
+}

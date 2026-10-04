@@ -15,7 +15,7 @@ env.FIREBASE_EMULATORS_PATH = path.join(qaDir, '.cache/emulators');
 env.XDG_CONFIG_HOME = path.join(qaDir, '.cache/config'); // Isolate CLI login/preferences too.
 env.CI = 'true'; // Noninteractive CLI; skip remote MOTD/update checks.
 env.PLAYWRIGHT_BROWSERS_PATH = path.join(qaDir, '.cache/playwright');
-if (['emulators', 'smoke', 'security', 'access', 'rounds', 'finalization', 'reports', 'components'].includes(process.argv[2])) {
+if (['emulators', 'smoke', 'security', 'access', 'rounds', 'finalization', 'reports', 'components', 'p10-security', 'p10-load'].includes(process.argv[2])) {
   // Firebase requires rules inside its config root. Refresh from the actual
   // application rules on EVERY launch; never maintain permissive QA rules.
   fs.mkdirSync(path.join(qaDir, '.cache'), { recursive: true });
@@ -25,6 +25,8 @@ const firebaseCli = path.join(qaDir, 'node_modules/firebase-tools/lib/bin/fireba
 const viteCli = path.join(root, 'web_app/admin-portal/frontend/node_modules/vite/bin/vite.js');
 const common = ['--config', path.join(qaDir, 'firebase.qa.json'), '--project', env.GCLOUD_PROJECT, '--only', 'auth,firestore'];
 const actions = {
+  'p10-security': { args: [firebaseCli, 'emulators:exec', ...common, 'node security/run.cjs'] },
+  'p10-load': { args: [firebaseCli, 'emulators:exec', ...common, 'node load/run.cjs'] },
   'browser-tests': { args: [path.join(qaDir, 'node_modules/@playwright/test/cli.js'), 'test', ...process.argv.slice(3)] },
   'p09-student-fixture': { args: [path.join(__dirname, 'p09-student-fixture.cjs')] },
   components: { args: [firebaseCli, 'emulators:exec', ...common, 'node scripts/p08.cjs'] },

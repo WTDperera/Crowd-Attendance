@@ -42,13 +42,15 @@ const IDENTITY_TOOLKIT_ERROR_MESSAGES = {
  *      the frontend never gets a Firebase Auth session for them at all.
  */
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body || {};
-
-  if (!email || !password) {
+  const body = req.body;
+  if (!body || Array.isArray(body) || Object.keys(body).some(key => !['email', 'password'].includes(key)) ||
+      typeof body.email !== 'string' || body.email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email) ||
+      typeof body.password !== 'string' || !body.password || body.password.length > 1024) {
     return res
       .status(400)
       .json({ message: 'Email and password are required.' });
   }
+  const { email, password } = body;
 
   if (!FIREBASE_WEB_API_KEY) {
     console.error(

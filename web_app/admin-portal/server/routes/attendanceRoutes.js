@@ -75,18 +75,24 @@ const {
 } = require('../services/sessionFinalization');
 router.post('/session/:sessionId/complete', verifyFirebaseToken, requireLecturer, requireSessionOwner, async (req, res) => {
   try {
+    if (!req.body || Array.isArray(req.body) || Object.keys(req.body).length) {
+      return res.status(400).json({ message: 'Completion accepts an empty JSON object only.' });
+    }
     return res.json(await finalizeSession({
       sessionId: req.params.sessionId,
       actor: req.user.uid
     }));
   } catch (error) {
     return res.status(error.status || 500).json({
-      message: error.message
+      message: error.status ? error.message : 'Unable to complete this operation right now.'
     });
   }
 });
 router.post('/session/:sessionId/mark', verifyFirebaseToken, requireLecturer, requireSessionOwner, async (req, res) => {
   try {
+    if (!req.body || Array.isArray(req.body) || Object.keys(req.body).some(key => !['student_uid', 'status', 'reason'].includes(key))) {
+      return res.status(400).json({ message: 'Unsupported correction fields.' });
+    }
     return res.json(await correctAttendance({
       sessionId: req.params.sessionId,
       actor: req.user.uid,
@@ -98,7 +104,7 @@ router.post('/session/:sessionId/mark', verifyFirebaseToken, requireLecturer, re
     }));
   } catch (error) {
     return res.status(error.status || 500).json({
-      message: error.message
+      message: error.status ? error.message : 'Unable to complete this operation right now.'
     });
   }
 });

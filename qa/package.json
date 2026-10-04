@@ -20,6 +20,9 @@
     "web": "node scripts/run.cjs web",
     "build:web": "node scripts/run.cjs build-web"
   },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.5"
+  },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@firebase/rules-unit-testing": "5.0.0",

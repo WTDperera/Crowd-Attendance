@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P09 only — completed, awaiting review
+**Current authorized phase:** P10 only — completed, awaiting review
 
-**Last approved phase:** P08
+**Last approved phase:** P09
 
-**Implementation status:** P01–P08 approved; P09 READY_FOR_REVIEW. P10–P13 are not authorized.
+**Implementation status:** P01–P09 approved; P10 READY_FOR_REVIEW. P11–P13 are not authorized.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -19,8 +19,8 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 | P06 — Finalization, recovery and corrections | APPROVED | 2026-10-04: “I approve P05. Please start P06” | [P06 report](../qa/reports/P06.md): combined 44/44; unit 11/11; Android P06 1/1, retained P05 2/2 and P04 lecturer 1/1; targeted Dart analysis clean; normal lecturer QA APK builds | 2026-10-04: “I approve P06. Please start P07” |
 | P07 — Report and workbook correctness | APPROVED | 2026-10-04: “I approve P06. Please start P07” | [P07 report](../qa/reports/P07.md): final combined 64/64; Android student 3/3, lecturer 1/1; serialized XLSX/formula checks; both normal QA APKs and QA web build pass; analysis limits recorded | 2026-10-04: “I approve P07. Please start P08” |
 | P08 — UI components and retained demo features | APPROVED | 2026-10-04: “I approve P07. Please start P08” | [P08 report](../qa/reports/P08.md): combined 94/94; Android student 6/6, lecturer 7/7; retained Android P05 2/2 and pure 11/11; actual form persistence/fault recovery; normal/QA web and both Android APK builds pass; baseline lint limits recorded | 2026-10-04: “I approve P08. Please start P09” |
-| P09 — Automated browser and mobile journeys | READY_FOR_REVIEW | 2026-10-04: “I approve P08. Please start P09” | [P09 report](../qa/reports/P09.md): clean shared chain lecturer Android 1/1 → Playwright 2/2 → student Android 1/1; eight axe states, two reviewed web screenshots; retained 94/94; both final normal QA APKs and normal/QA web builds pass; native/accessibility/analysis limits recorded | None |
-| P10 — Security checks and modest load scripts | NOT_STARTED | None | None | None |
+| P09 — Automated browser and mobile journeys | APPROVED | 2026-10-04: “I approve P08. Please start P09” | [P09 report](../qa/reports/P09.md): clean shared chain lecturer Android 1/1 → Playwright 2/2 → student Android 1/1; eight axe states, two reviewed web screenshots; retained 94/94; both final normal QA APKs and normal/QA web builds pass; native/accessibility/analysis limits recorded | 2026-10-05: “I approve P09. Please start P10” |
+| P10 — Security checks and modest load scripts | READY_FOR_REVIEW | 2026-10-05: “I approve P09. Please start P10” | [P10 report](../qa/reports/P10.md): security 6/6, harness 4/4, retained 94/94; pinned redacted scans with explicit remaining dispositions; final load 191 requests, three expected failures, zero unexpected errors and reconciled ledger; normal/QA web builds pass | None |
 | P11 — Test commands and GitHub Actions | NOT_STARTED | None | None | None |
 | P12 — Actual demo devices and failure checks | NOT_STARTED | None | None | None |
 | P13 — Final regression and submission pack | NOT_STARTED | None | None | None |
@@ -34,6 +34,14 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+## P10 review checkpoint — 2026-10-05
+
+P10 is **READY_FOR_REVIEW**, not approved. [Report, findings, verification and exact manual inventory](../qa/reports/P10.md). Original four malformed-input failures reproduced and repaired; final six API cases and four harness cases pass. Retained local suite 94/94, zero skipped. Gitleaks 8.30.1 / OSV 2.6.0 are checksum pinned: four current/15 historical Firebase client-key identifiers reviewed, no scanned privileged credential exposure found; six package occurrences/seven advisory occurrences remain with explicit scope dispositions. Bundled older SheetJS parser limitations are separately disclosed, not silently treated as patched. No live key validation/restriction or broad audit claim.
+
+Final local repeat: 191 requests, 188 HTTP 200 plus three expected failures during owned API outage, zero unexpected errors. Six-worker mixed workload p95 962.43 ms; paced fault/soak 38.00 s. Rejected atomic commit, lost correction acknowledgement and API restart reconcile exactly one enrollment/class/correction with retained round evidence and correct attendance/absence counters. Normal/QA web builds pass. Mobile/physical/browser journeys were not rerun; student Windows deferral persists. All owned QA services stop; index empty, 25 files in manual inventory, no Git mutation/deployment/live operation. P11–P13 remain unauthorized.
+
+2026-10-05 — “I approve P09. Please start P10” approves P09 and starts P10 only. Android scope and student Windows deferral persist. Initial clean worktree/index on MAIN, HEAD `a5a07b1526e833f87d8714ebae31743bba887b03`; P09 was committed externally. P11–P13 remain unauthorized.
 
 2026-10-04 — “I approve P08. Please start P09” approves P08 and starts P09 only. Android scope and student Windows deferral persist. P10 requires separate approval/start. Initial clean worktree/index, branch MAIN, HEAD `ae72bc90bb1b9d1256fee648c8252e01b8d7e88c`; P08 was committed externally.
 

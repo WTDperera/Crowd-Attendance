@@ -38,6 +38,8 @@ function requireModuleOwner(select) {
 
 async function requireSessionOwner(req, res, next) {
   try {
+    const id = req.params.sessionId;
+    if (typeof id !== 'string' || !id || id.length > 128 || id.includes('/')) throw new HttpError(400, 'A valid session ID is required.');
     const session = await db.doc(`active_sessions/${req.params.sessionId}`).get();
     if (!session.exists) throw new HttpError(404, 'Session not found.');
     if (session.get('lecturer_id') !== req.user.uid) throw new HttpError(403, 'Session owner access required.');

@@ -1,0 +1,183 @@
+{
+  "reviewedOn": "2026-10-05",
+  "reviewExpires": "2026-11-05T00:00:00Z",
+  "scope": "Local synthetic academic demo; live key restrictions and production services not probed.",
+  "secrets": [
+    {
+      "fingerprint": "current:lecturer_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "current:lecturer_app/android/app/google-services.json:gcp-api-key:37",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "current:lecturer_app/android/app/google-services.json:gcp-api-key:56",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "current:student_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "dbae71074206e25cfa8e8d8bc4a6221b4c61bc48:web_app/lib/firebase_options.dart:gcp-api-key:22",
+      "contentHash": "3c5767c269dee2e8301292e9df29a9dbc609f0f9d6a63693fda015c5b34f8645",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "dbae71074206e25cfa8e8d8bc4a6221b4c61bc48:web_app/lib/firebase_options.dart:gcp-api-key:33",
+      "contentHash": "3c5767c269dee2e8301292e9df29a9dbc609f0f9d6a63693fda015c5b34f8645",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "dbae71074206e25cfa8e8d8bc4a6221b4c61bc48:web_app/SETUP.md:gcp-api-key:29",
+      "contentHash": "3c5767c269dee2e8301292e9df29a9dbc609f0f9d6a63693fda015c5b34f8645",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "94f038bd59653f1ffff1876c18fd5bc459950bd4:lecturer_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "94f038bd59653f1ffff1876c18fd5bc459950bd4:lecturer_app/android/app/google-services.json:gcp-api-key:37",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "94f038bd59653f1ffff1876c18fd5bc459950bd4:lecturer_app/android/app/google-services.json:gcp-api-key:56",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "94f038bd59653f1ffff1876c18fd5bc459950bd4:student_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "76d3a84af6f602384f5dd6f883a45e930203e3fc:lecturer_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "76d3a84af6f602384f5dd6f883a45e930203e3fc:lecturer_app/android/app/google-services.json:gcp-api-key:37",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "76d3a84af6f602384f5dd6f883a45e930203e3fc:lecturer_app/android/app/google-services.json:gcp-api-key:56",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "76d3a84af6f602384f5dd6f883a45e930203e3fc:student_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "7f49c63a593139d886f9259b9ae2dcbd9298c9b6:lec_app/android/app/google-services.json:gcp-api-key:18",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "7f49c63a593139d886f9259b9ae2dcbd9298c9b6:lec_app/android/app/google-services.json:gcp-api-key:37",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "7f49c63a593139d886f9259b9ae2dcbd9298c9b6:lec_app/android/app/google-services.json:gcp-api-key:56",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    },
+    {
+      "fingerprint": "7f49c63a593139d886f9259b9ae2dcbd9298c9b6:lec_app/android/app/google-services.json:gcp-api-key:75",
+      "contentHash": "669e4514ff7596208922d30715fa1895286d2800468b6c0ddd9c857cb9d5912a",
+      "disposition": "Firebase client configuration identifier; not an Admin credential. Reviewed client/config and setup contexts only. Live restrictions/other API use unverified.",
+      "reference": "https://firebase.google.com/docs/projects/api-keys"
+    }
+  ],
+  "dependencies": [
+    {
+      "file": "qa/package-lock.json",
+      "package": "@opentelemetry/core",
+      "version": "1.30.1",
+      "id": "GHSA-8988-4f7v-96qf",
+      "disposition": "Deferred tool-only dependency: no inbound W3C Baggage propagation in the retained local emulator/test path. Major OpenTelemetry migration is outside P10."
+    },
+    {
+      "file": "qa/package-lock.json",
+      "package": "basic-ftp",
+      "version": "5.3.1",
+      "id": "GHSA-c475-qrg2-pj4r",
+      "disposition": "Deferred tool-only FTP parser: local QA launcher uses HTTP downloads and Auth/Firestore emulators; no FTP target or untrusted directory listing is accepted. Major upgrade is outside the exercised path."
+    },
+    {
+      "file": "qa/package-lock.json",
+      "package": "braces",
+      "version": "3.0.3",
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "disposition": "Deferred tool-only glob parser: fixed repository paths and launcher arguments, no user-supplied nested glob input. No patched version listed in OSV; not deployed application code."
+    },
+    {
+      "file": "qa/package-lock.json",
+      "package": "uuid",
+      "version": "9.0.1",
+      "id": "GHSA-w5hq-g745-h8pq",
+      "disposition": "Advisory targets v3/v5/v6 with a caller-provided buffer; inspected gaxios path calls v4() without a buffer. No retained route accepts a UUID buffer or invokes affected versions."
+    },
+    {
+      "file": "web_app/admin-portal/frontend/package-lock.json",
+      "package": "react-router",
+      "version": "6.30.6",
+      "id": "GHSA-337j-9hxr-rhxg",
+      "disposition": "Deferred major router migration: retained app uses BrowserRouter client rendering without SSR hydration; navigation targets are fixed local paths or prefixed /students/ and /modules/ paths, never an untrusted complete destination."
+    },
+    {
+      "file": "web_app/admin-portal/frontend/package-lock.json",
+      "package": "react-router",
+      "version": "6.30.6",
+      "id": "GHSA-wrjc-x8rr-h8h6",
+      "disposition": "Deferred major router migration: retained app uses BrowserRouter client rendering without SSR hydration; navigation targets are fixed local paths or prefixed /students/ and /modules/ paths, never an untrusted complete destination."
+    },
+    {
+      "file": "web_app/admin-portal/server/package-lock.json",
+      "package": "uuid",
+      "version": "9.0.1",
+      "id": "GHSA-w5hq-g745-h8pq",
+      "disposition": "Advisory targets v3/v5/v6 with a caller-provided buffer; inspected gaxios path calls v4() without a buffer. No retained route accepts a UUID buffer or invokes affected versions."
+    }
+  ],
+  "manualFindings": [
+    {
+      "package": "xlsx-js-style@1.2.0",
+      "bundledEngine": "SheetJS 0.18.5",
+      "advisories": [
+        "GHSA-4r6h-8v6p-xvw6",
+        "GHSA-5pgg-2g8v-p4x9"
+      ],
+      "disposition": "Retained exporter constructs/writes workbooks only. Vulnerable read/parser functions are not exposed to uploaded/untrusted files; tests read only their own generated synthetic XLSX. Direct unused xlsx removed. Scanner does not inspect bundled vendor code; replacing style/export stack is deferred unless import is added."
+    }
+  ]
+}
