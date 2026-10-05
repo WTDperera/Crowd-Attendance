@@ -2,7 +2,7 @@
   "node": "24.21.0",
   "flutter": "3.47.6",
   "flutterCommit": "5fc346839b5d0eef006ed8404392afb4dfae428d",
-  "java": "21.0.11+10",
+  "java": "21.0.11+10.0.LTS",
   "actionlint": {
     "version": "1.7.12",
     "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_windows_amd64.zip",

@@ -263,10 +263,10 @@ Run these from `qa`. Earlier phase instructions remain historical/reusable; `tes
 | `test:mobile` | Actual Android student enrollment, lecturer session access and round persistence probes, each preceded by its required fixture. |
 | `test:e2e` | One seed → lecturer Android journey → full Windows Chromium suite → preservation-only student fixture → student Android journey. One ledger is shared without a reset between clients. Radio callbacks are simulated. |
 | `test:accessibility` / `test:visual` | Same standalone stable-screen browser case: eight selected axe states and two strict reviewed Windows screenshot comparisons. It uses the completed base class and removes only the empty active placeholder; it never manufactures an Android journey ledger. |
-| `test:security` | Fresh pinned Gitleaks + OSV scans, exact valid dispositions, four security harness cases and six local API security cases. Raw findings may exit 1; only a freshly produced scan artifact plus passing review can satisfy the wrapper. |
+| `test:security` | Fresh pinned Gitleaks + OSV scans, exact valid dispositions, four security harness cases and seven local API security cases (including the P13 expired-token regression). Raw findings may exit 1; only a freshly produced scan artifact plus passing review can satisfy the wrapper. |
 | `test:property` | Existing lecturer seeded replay/reversal test, selected by exact name: one bounded property case over 100 repeat counts. No broad randomized/shrinking/fuzzing framework is claimed. |
 | `test:performance` | Existing fixed P10 six-worker load/fault/short-soak with measured latency and ledger reconciliation. |
-| `smoke` / `test:regression` | Original five P02 checks / retained P08 94 then P10 six API cases. No new test duplicates are created to inflate totals. |
+| `smoke` / `test:regression` | Original five P02 checks / retained P08 94 then seven API security cases (101 execution occurrences). No new test duplicates are created to inflate totals. |
 | `test:workflow` | Checksum-pinned actionlint validates the workflow and custom self-hosted label. Bash/Python linters are disabled; workflow scripts use PowerShell. |
 | `test:hardware` | Always fails with the explicit P12/device prerequisite. No BLE/native-permission/UAT pass is inferred. |
 
@@ -291,4 +291,4 @@ powershell -NoProfile -ExecutionPolicy Bypass -File qa/security/install.ps1
 
 Only `qa/artifacts/p11/*.json` command summaries are uploaded for seven days. Raw logs, environments, Auth responses, traces, screenshots, APKs, caches and the whole workspace are excluded from upload. Reviewed baseline PNGs remain source-controlled, never updated automatically. The Windows hosted image/fonts can differ from this machine; a visual mismatch must fail and require deliberate review, not an automatic baseline update. Full lint baseline failures remain visible through the strict full command; the automatic job is explicitly focused static verification.
 
-No hosted run has occurred. Review [P11 report](reports/P11.md) before manually staging/pushing. P12 requires separate user approval/start; running these emulator commands does not establish physical BLE or real-user acceptance.
+The user subsequently pushed P11/P12. Hosted run 37236446839 failed at Java setup before application tests. P13 corrects the exact Java catalog selector to `21.0.11+10.0.LTS`; corrected hosted jobs still require the user's manual publication and a new run. Review [P13 report](reports/P13.md), [final results](../QA.university.results.md) and [software-only demo/reset/recovery](docs/demo.md). P12's physical-phone scope was explicitly deferred by the user; running these emulator commands does not establish physical BLE or real-user acceptance.

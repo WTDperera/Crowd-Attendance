@@ -26,6 +26,9 @@ const fixture=async action=>{
   if(!require('../../web_app/admin-portal/server/qaConfig').getQaConfig())throw Error('Explicit QA environment required');
   const probe=spawnSync(adb,['devices'],{encoding:'utf8',windowsHide:true});
   if(probe.status!==0 || !/^emulator-5580\s+device\s*$/m.test(probe.stdout))throw Error('Dedicated QA Android emulator unavailable; no desktop fallback');
+  // CLI startup can precede the first usable Firestore read. Use the same
+  // bounded read-only guard as the other suites before fixture reset/write.
+  await require('./suites.cjs').readiness();
   await services(async()=>{
     try {
       if(mode==='e2e') {

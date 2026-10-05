@@ -75,3 +75,20 @@ test('P10 denied CORS origin receives no permission and invalid bearer cannot re
   assert.equal(response.headers.get('access-control-allow-origin'), null);
   await rejected(response, 401);
 });
+
+test('P13 expired emulator identity token is rejected by Auth verification and the protected API', async () => {
+  const { auth } = require('../../web_app/admin-portal/server/firebaseAdmin');
+  assert.equal((await auth.verifyIdToken(token, true)).uid, identities.lecturers[0].uid);
+  const parts = token.split('.');
+  const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+  const now = Math.floor(Date.now() / 1000);
+  payload.iat = now - 7200;
+  payload.exp = now - 3600;
+  parts[1] = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  // Local Auth emulator tokens are unsigned; this specifically checks expiry,
+  // not production signing-key verification. Never emit the token in evidence.
+  const expired = parts.join('.');
+  await assert.rejects(auth.verifyIdToken(expired, true), error => error.code === 'auth/id-token-expired');
+  await rejected(await fetch(base + '/api/students', { headers: { Authorization: `Bearer ${expired}` } }), 401);
+  assert.equal((await db.collection('students').get()).size, 3);
+});
