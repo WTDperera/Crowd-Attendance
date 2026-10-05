@@ -1,6 +1,6 @@
 # Crowd Attendance — final QA results
 
-P13, 2026-10-05. **READY_FOR_REVIEW — software-only scope.** This pack covers the user-approved software-only demo. Final acceptance remains with the user. Hosted CI retest is pending and full static findings remain disclosed.
+P13, 2026-10-05. **ACCEPTED — software-only scope; QA process complete.** The user gave final acceptance on 2026-10-05: “I accept P13. The QA process is complete”. Hosted CI retest is pending and full static findings remain disclosed; acceptance does not change the recorded verification boundaries.
 
 The user approved P12 and started P13 with “I approve P12. Please start P13”. Physical-phone testing was previously declined with “no need tto do that”. Student Windows desktop/host tests remain deferred. Android emulator and browser results cannot establish physical BLE or human usability.
 
@@ -96,4 +96,4 @@ The academic-demo completion gate is met for the explicitly narrowed software sc
 
 Owned API/web/Firebase/Android processes are stopped. No QA port listeners or adb devices remain. Final normal-entry QA APK hashes and exact optional manual Git commands are in [P13 report](qa/reports/P13.md). No files were staged or committed by the agent.
 
-**STOPPED — awaiting your final acceptance of P13.** No successor phase is authorized.
+**CLOSED — P13 accepted by the user on 2026-10-05.** No successor phase is authorized. Acceptance was recorded through documentation only; no application/test changes or new test/scan runs were performed. Execution evidence and scan hashes belong to the reviewed P13 snapshot.

@@ -1,11 +1,11 @@
 # QA Phase Status
 
 **Created:** 2 October 2026  
-**Current authorized phase:** P13 only — READY_FOR_REVIEW, software-only scope
+**Current authorized phase:** None — QA process complete for the accepted software-only scope
 
-**Last approved phase:** P12
+**Last approved phase:** P13
 
-**Implementation status:** P01–P12 approved; P13 READY_FOR_REVIEW for the approved software-only scope. Physical-device checks remain deferred by user instruction; final acceptance is pending.
+**Implementation status:** P01–P13 approved; final P13 acceptance recorded on 2026-10-05. Physical-device checks remain deferred by user instruction; verification limits and hosted CI retest remain documented.
 
 Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan](QA.university.essential.plan.md).
 
@@ -23,7 +23,7 @@ Read together with [rules](AGENTS.md), [prompts](QA.agent.prompts.md) and [plan]
 | P10 — Security checks and modest load scripts | APPROVED | 2026-10-05: “I approve P09. Please start P10” | [P10 report](../qa/reports/P10.md): security 6/6, harness 4/4, retained 94/94; pinned redacted scans with explicit remaining dispositions; final load 191 requests, three expected failures, zero unexpected errors and reconciled ledger; normal/QA web builds pass | 2026-10-05: “I approve P10. Please start P11” |
 | P11 — Test commands and GitHub Actions | APPROVED | 2026-10-05: “I approve P10. Please start P11” | [P11 report](../qa/reports/P11.md): unified suites propagate failures; local workflow validation; retained94+6, unit15+11, Android widget6+7/service1+1+2/shared journey1→2→1; security4+6; load191 requests; builds pass; baseline full lint fails; hosted CI unrun | 2026-10-05: “I approve P11. Please start P12” |
 | P12 — Actual demo devices and failure checks | APPROVED — software-only scope | 2026-10-05: “I approve P11. Please start P12” | [P12 report](../qa/reports/P12.md): user said “no need tto do that” to physical-phone checks; E16/E17 and physical E20 deferred, not passed; prior P11 software evidence referenced, no new functional run | 2026-10-05: “I approve P12. Please start P13” |
-| P13 — Final regression and submission pack | READY_FOR_REVIEW — software-only | 2026-10-05: “I approve P12. Please start P13” | [P13 report](../qa/reports/P13.md), [final results](../QA.university.results.md), [demo/reset/recovery](../qa/docs/demo.md): regression101, Android widget13/service4/retained13/shared chain1→2→1; security4+7; load191 requests; builds pass. Physical E16/E17 deferred; broad static nonzero; hosted Java failure repaired locally, retest pending. | None — final acceptance pending |
+| P13 — Final regression and submission pack | APPROVED — software-only; QA complete | 2026-10-05: “I approve P12. Please start P13” | [P13 report](../qa/reports/P13.md), [final results](../QA.university.results.md), [demo/reset/recovery](../qa/docs/demo.md): regression101, Android widget13/service4/retained13/shared chain1→2→1; security4+7; load191 requests; builds pass. Physical E16/E17 deferred; broad static nonzero; hosted Java failure repaired locally, retest pending. | 2026-10-05: “I accept P13. The QA process is complete” |
 
 ## Status rules
 
@@ -34,6 +34,8 @@ Starting a successor additionally requires an explicit start instruction for tha
 Do not treat the table itself as a substitute for missing user authorization.
 
 ## Approval and start log
+
+2026-10-05 — “I accept P13. The QA process is complete” gives final acceptance of P13 for its recorded software-only scope and closes QA. No successor phase is authorized. Physical/user-deferred checks, static findings, security exceptions and hosted CI retest remain as recorded; acceptance does not convert them into passes.
 
 2026-10-05 — “I approve P12. Please start P13” approves P12's recorded software-only scope and authorizes P13 only. Initial worktree/index clean on MAIN, HEAD `8ccf577d232e9d33be63e7cbfe6471e9c56c813f`; P11/P12 were committed and pushed externally. Physical BLE/native permission/device checks and real-user UAT remain deferred. Final acceptance has not been given.
 
@@ -250,3 +252,10 @@ Full static remains nonzero: frontend10 errors/two warnings; student analysis0 e
 Owned QA services/AVD stopped; zero QA listeners and empty adb list. BranchMAIN/HEAD8ccf577d232e9d33be63e7cbfe6471e9c56c813f/origin unchanged; index empty. Nine-file manual inventory in the report excludes generated material. No agent Git mutation, deployment, publication or live Firebase operation. Final acceptance has not been given.
 
 **STOPPED — awaiting final user acceptance of P13.** There is no successor phase.
+## Final acceptance and closure — 2026-10-05
+
+P13 is **APPROVED** and the QA process is **COMPLETE for the accepted software-only scope**, by the user's explicit “I accept P13. The QA process is complete”. Earlier review checkpoints below/above are historical; their pending-approval wording does not override this acceptance.
+
+Prior P13 implementation was committed externally at `31d08103e5fa7afc50a2d39f6105c44e1a9f7beb` (`docs(qa): complete P13 final regression and submission pack`). Closure began with a clean worktree/index on MAIN; origin remains `https://github.com/WTDperera/Crowd-Attendance.git`. Only this tracker, the final results document and P13 report were updated. No application/test changes, new test/scan runs, agent Git mutations, deployment or publication occurred. Scan hashes remain evidence for the preceding reviewed snapshot. Optional three-file manual Git commands are in the report.
+
+**CLOSED — final P13 acceptance recorded.** No further QA work or successor phase is authorized.
